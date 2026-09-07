@@ -9,6 +9,7 @@ import healthRouter from './routes/health';
 import authRouter from './routes/auth';
 import categoryRouter from './routes/categories';
 import productRouter from './routes/products';
+import customerRouter from './routes/customers';
 import importRouter from './routes/import';
 
 /**
@@ -71,7 +72,9 @@ export const createApp = (): Application => {
   app.use('/api/auth', authRouter);
   app.use('/api/categories', categoryRouter);
   app.use('/api/products', productRouter);
+  app.use('/api/customers', customerRouter);
   app.use('/api/products/import', importRouter);
+  app.use('/api/customers/import', importRouter);
 
   // === 404 handler ===
   app.use((req, res) => {

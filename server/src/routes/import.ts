@@ -83,4 +83,33 @@ router.post('/xml', upload.single('file'), async (req, res, next) => {
   }
 });
 
+/**
+ * POST /api/customers/import/excel
+ *
+ * multipart/form-data, field: "file" (.xlsx veya .xls)
+ * Beklenen sütunlar: Name | ContactName | Email | Phone | Address |
+ *                   TaxNumber | TaxOffice | Notes
+ * Response: { data: { total, added, skipped, errors[] } }
+ */
+router.post('/customers/excel', upload.single('file'), async (req, res, next) => {
+  try {
+    if (!req.user) throw new HttpError(401, 'Kimlik doğrulama gerekli');
+    if (!req.file) throw new HttpError(400, 'Dosya gerekli (multipart field: file)');
+
+    const allowedMimes = [
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'application/vnd.ms-excel',
+      'application/octet-stream',
+    ];
+    if (!allowedMimes.includes(req.file.mimetype)) {
+      throw new HttpError(400, `Geçersiz dosya tipi: ${req.file.mimetype}`);
+    }
+
+    const result = await importService.importCustomersFromExcel(req.user.tenantId, req.file.buffer);
+    res.json({ data: result });
+  } catch (err) {
+    next(err);
+  }
+});
+
 export default router;

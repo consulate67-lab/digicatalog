@@ -6,6 +6,7 @@ import { products, categories, type NewProduct } from '../db/schema';
 import { withTenant } from '../db/helpers';
 import { HttpError } from '../middleware/errorHandler';
 import { logger } from '../utils/logger';
+import { bulkCreateCustomers } from './customer.service';
 
 /**
  * Bulk import service. Excel (.xlsx/.xls) veya XML'den ürün yükler.
@@ -308,6 +309,107 @@ const importRows = async (tenantId: string, rows: ParsedRow[]): Promise<ImportRe
       errorCount: result.errors.length,
     },
     'Bulk product import completed',
+  );
+
+  return result;
+};
+
+// === Customer Excel Import ===
+
+export interface CustomerImportResult {
+  total: number;
+  added: number;
+  skipped: number;
+  errors: Array<{ row: number; name?: string; message: string }>;
+}
+
+/**
+ * POST /api/customers/import/excel için Excel parser.
+ *
+ * Beklenen sütunlar (büyük-küçük harf duyarsız):
+ *   Name | ContactName | Email | Phone | Address | TaxNumber | TaxOffice | Notes
+ *
+ * Davranış:
+ * - Name zorunlu, yoksa satır atlanır + error
+ * - Aynı tenant'ta aynı name ile müşteri zaten varsa atlanır
+ * - bulkCreateCustomers 100'lük chunk'larla insert eder
+ */
+export const importCustomersFromExcel = async (
+  tenantId: string,
+  buffer: Buffer,
+): Promise<CustomerImportResult> => {
+  const workbook = XLSX.read(buffer, { type: 'buffer' });
+  const sheetName = workbook.SheetNames[0];
+  if (!sheetName) throw new HttpError(400, 'Excel dosyası boş veya okunamadı');
+
+  const sheet = workbook.Sheets[sheetName];
+  const rawRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: '' });
+
+  const result: CustomerImportResult = {
+    total: rawRows.length,
+    added: 0,
+    skipped: 0,
+    errors: [],
+  };
+
+  if (rawRows.length === 0) return result;
+
+  const inputs: Array<{
+    name: string;
+    contactName?: string | null;
+    email?: string | null;
+    phone?: string | null;
+    address?: string | null;
+    taxNumber?: string | null;
+    taxOffice?: string | null;
+    notes?: string | null;
+    source: 'excel';
+  }> = [];
+
+  for (let i = 0; i < rawRows.length; i++) {
+    const r = rawRows[i];
+    const rowNum = i + 2;
+    const lower: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(r)) {
+      lower[k.toLowerCase().trim()] = v;
+    }
+    const name = lower.name?.toString().trim();
+    if (!name) {
+      result.errors.push({ row: rowNum, message: 'Name zorunludur' });
+      result.skipped++;
+      continue;
+    }
+    inputs.push({
+      name,
+      contactName: lower.contactname?.toString().trim() || null,
+      email: lower.email?.toString().trim() || null,
+      phone: lower.phone?.toString().trim() || null,
+      address: lower.address?.toString().trim() || null,
+      taxNumber: lower.taxnumber?.toString().trim() || null,
+      taxOffice: lower.taxoffice?.toString().trim() || null,
+      notes: lower.notes?.toString().trim() || null,
+      source: 'excel',
+    });
+  }
+
+  if (inputs.length > 0) {
+    const { added } = await bulkCreateCustomers(tenantId, inputs);
+    result.added = added;
+    // skipped: duplicate names + empty names (already counted)
+    const duplicates = inputs.length - added;
+    if (duplicates > 0) {
+      result.skipped += duplicates;
+      // İsimsiz duplicate'leri error olarak göstermek zor, basit mesaj:
+      result.errors.push({
+        row: 0,
+        message: `${duplicates} satır aynı isimle zaten mevcut olduğu için atlandı`,
+      });
+    }
+  }
+
+  logger.info(
+    { tenantId, ...result },
+    'Bulk customer import completed',
   );
 
   return result;
