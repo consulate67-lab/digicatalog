@@ -217,7 +217,7 @@ cd D:\DigiCatalog\client && npm run dev
 
 ---
 
-## Faz 6 — Ürün Tanıtım Ekranı & Modal (2 commit)
+## Faz 6 — Ürün Tanıtım Ekranı & Modal ✅ (tamamlandı)
 
 **Hedef:** Public viewer, kategori navigasyonu, detay modal.
 
