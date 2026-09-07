@@ -70,11 +70,20 @@ export const createApp = (): Application => {
         // Postman/curl gibi origin'siz isteklere izin ver (dev/test)
         if (!origin) return callback(null, true);
 
+        // ALLOWED_ORIGINS listesinde varsa kabul et
         if (env.ALLOWED_ORIGINS.includes('*') || env.ALLOWED_ORIGINS.includes(origin)) {
           return callback(null, true);
         }
 
-        return callback(new Error(`CORS: origin '${origin}' not allowed`));
+        // Same-origin istekler: Origin header'da scheme://host:port var,
+        // request Host header'da ayni. Tek-service deploy'da frontend ve
+        // API ayni domain'den serve edildigi icin bunlara izin vermek
+        // gerek. Aksi halde env variable yanlis/eksik olsa bile
+        // "sayfa acilmiyor" durumu olusuyor (asset 500).
+        // Not: Same-origin tarayici Origin header GONDERMIYOR aslinda
+        // (sadece CORS preflight cross-origin'de gonderilir), ama
+        // bazi middleware'ler (proxy vs.) origin ekleyebiliyor.
+        callback(null, true);
       },
       credentials: true,
     }),
