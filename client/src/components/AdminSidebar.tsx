@@ -1,11 +1,19 @@
 import { NavLink } from 'react-router-dom';
-import { Package, FolderTree, Upload, LayoutDashboard, BookOpen } from 'lucide-react';
+import {
+  Package,
+  FolderTree,
+  Upload,
+  LayoutDashboard,
+  BookOpen,
+  Users,
+} from 'lucide-react';
 
 /**
  * Admin sidebar. Auth + AdminLayout içinde kullanılır.
  *
  * Faz 2: Products, Categories, Import
- * Faz 3+: Customers, Catalogs, Viewer (Faz 5/6)
+ * Faz 3: Customers (Müşteriler)
+ * Faz 5+: Catalogs, Viewer
  */
 const AdminSidebar = () => {
   const linkClass = ({ isActive }: { isActive: boolean }): string =>
@@ -39,6 +47,18 @@ const AdminSidebar = () => {
           Kategoriler
         </NavLink>
         <NavLink to="/admin/products/import" className={linkClass}>
+          <Upload className="h-4 w-4" />
+          Toplu İçe Aktar
+        </NavLink>
+
+        <div className="px-3 pb-1 pt-4 text-xs font-semibold uppercase tracking-wider text-slate-400">
+          Müşteriler
+        </div>
+        <NavLink to="/admin/customers" className={linkClass}>
+          <Users className="h-4 w-4" />
+          Müşteriler
+        </NavLink>
+        <NavLink to="/admin/customers/import" className={linkClass}>
           <Upload className="h-4 w-4" />
           Toplu İçe Aktar
         </NavLink>

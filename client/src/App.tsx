@@ -17,6 +17,12 @@ const ProductsEdit = lazy(() => import('./pages/admin/ProductsEdit'));
 const ProductImport = lazy(() => import('./pages/admin/ProductImport'));
 const Categories = lazy(() => import('./pages/admin/Categories'));
 
+// Faz 3: lazy-load customer pages
+const Customers = lazy(() => import('./pages/admin/Customers'));
+const CustomersNew = lazy(() => import('./pages/admin/CustomersNew'));
+const CustomersEdit = lazy(() => import('./pages/admin/CustomersEdit'));
+const CustomerImport = lazy(() => import('./pages/admin/CustomerImport'));
+
 const PageLoader = () => (
   <div className="flex min-h-[400px] items-center justify-center">
     <Loader2 className="h-8 w-8 animate-spin text-brand-600" />
@@ -69,6 +75,10 @@ const App = () => {
           <Route path="products/:id" element={<ProductsEdit />} />
           <Route path="products/import" element={<ProductImport />} />
           <Route path="categories" element={<Categories />} />
+          <Route path="customers" element={<Customers />} />
+          <Route path="customers/new" element={<CustomersNew />} />
+          <Route path="customers/:id" element={<CustomersEdit />} />
+          <Route path="customers/import" element={<CustomerImport />} />
         </Route>
 
         {/* 404 */}
