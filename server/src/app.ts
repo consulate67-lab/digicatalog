@@ -13,6 +13,7 @@ import customerRouter from './routes/customers';
 import importRouter from './routes/import';
 import integrationsRouter from './routes/integrations';
 import catalogRouter from './routes/catalogs';
+import viewerRouter from './routes/viewer';
 
 /**
  * Express app factory. Tüm middleware + route registry burada.
@@ -79,6 +80,11 @@ export const createApp = (): Application => {
   app.use('/api/customers/import', importRouter);
   app.use('/api/integrations', integrationsRouter);
   app.use('/api/catalogs', catalogRouter);
+
+  // === Public viewer (no auth) ===
+  // Musteri ziyaretinde katalog linki acildiginda bu route cagirilir.
+  // Sadece 'active' statuslu kataloglara erisim saglar.
+  app.use('/api/viewer', viewerRouter);
 
   // === 404 handler ===
   app.use((req, res) => {

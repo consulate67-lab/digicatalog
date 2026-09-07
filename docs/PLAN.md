@@ -184,7 +184,7 @@ cd D:\DigiCatalog\client && npm run dev
 
 ---
 
-## Faz 5 — Katalog Motoru (3 commit)
+## Faz 5 — Katalog Motoru ✅ (tamamlandı)
 
 **Hedef:** Çoklu müşterili katalog oluşturma, hızlı bant filtre, alan görünürlüğü.
 
@@ -209,9 +209,11 @@ cd D:\DigiCatalog\client && npm run dev
 - UI: her filtre için tek satır chip grubu, toggle mantığı
 
 **Commit'ler:**
-1. `feat(db): catalogs + catalog_items + catalog_customers + field_config schema`
-2. `feat(api): catalog CRUD + customer assignment + filter API`
-3. `feat(client): catalog wizard + filter UI + product picker`
+1. `9888ce6` `feat(db): catalogs + items + customers + field_config` (4 tablo, 4. migration)
+2. `0002b2e` `feat(api): catalog CRUD + customer + items + hızlı bant filtre` (11 endpoint)
+3. `c07e941` `feat(client): catalog management UI` (liste + 4-adımlı wizard + sidebar)
+
+**10 tablo (tenants, users, categories, products, product_images, customers, catalogs, catalog_items, catalog_customers, catalog_field_config)**
 
 ---
 
