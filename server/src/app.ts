@@ -6,6 +6,7 @@ import { env } from './config/env';
 import { logger } from './utils/logger';
 import { errorHandler } from './middleware/errorHandler';
 import healthRouter from './routes/health';
+import authRouter from './routes/auth';
 
 /**
  * Express app factory. Tüm middleware + route registry burada.
@@ -59,6 +60,7 @@ export const createApp = (): Application => {
 
   // === Routes ===
   app.use('/api', healthRouter);
+  app.use('/api/auth', authRouter);
 
   // === 404 handler ===
   app.use((req, res) => {
