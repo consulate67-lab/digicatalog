@@ -118,12 +118,15 @@ export const createApp = (): Application => {
   app.use('/api/customers/import', importRouter);
   app.use('/api/integrations', integrationsRouter);
   app.use('/api/catalogs', catalogRouter);
-  app.use('/api', pdfRouter);
 
   // === Public viewer (no auth) ===
-  // Musteri ziyaretinde katalog linki acildiginda bu route cagirilir.
-  // Sadece 'active' statuslu kataloglara erisim saglar.
+  // ONEMLI: pdfRouter'dan ONCE mount edilmeli. pdfRouter /api/*'a
+  // global authMiddleware uyguladigi icin, sonra gelen viewer da
+  // 401'le reddedilirdi. Viewer public oldugundan router disina
+  // auth koyamiyoruz, bu yuzden mount sirasi onemli.
   app.use('/api/viewer', viewerRouter);
+
+  app.use('/api', pdfRouter);
 
   // === Static client build (production) ===
   if (env.NODE_ENV === 'production') {
