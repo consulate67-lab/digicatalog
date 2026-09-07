@@ -23,6 +23,9 @@ const CustomersNew = lazy(() => import('./pages/admin/CustomersNew'));
 const CustomersEdit = lazy(() => import('./pages/admin/CustomersEdit'));
 const CustomerImport = lazy(() => import('./pages/admin/CustomerImport'));
 
+// Faz 4: lazy-load integrations
+const Integrations = lazy(() => import('./pages/admin/Integrations'));
+
 const PageLoader = () => (
   <div className="flex min-h-[400px] items-center justify-center">
     <Loader2 className="h-8 w-8 animate-spin text-brand-600" />
@@ -79,6 +82,7 @@ const App = () => {
           <Route path="customers/new" element={<CustomersNew />} />
           <Route path="customers/:id" element={<CustomersEdit />} />
           <Route path="customers/import" element={<CustomerImport />} />
+          <Route path="integrations" element={<Integrations />} />
         </Route>
 
         {/* 404 */}

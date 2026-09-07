@@ -11,6 +11,7 @@ import categoryRouter from './routes/categories';
 import productRouter from './routes/products';
 import customerRouter from './routes/customers';
 import importRouter from './routes/import';
+import integrationsRouter from './routes/integrations';
 
 /**
  * Express app factory. Tüm middleware + route registry burada.
@@ -75,6 +76,7 @@ export const createApp = (): Application => {
   app.use('/api/customers', customerRouter);
   app.use('/api/products/import', importRouter);
   app.use('/api/customers/import', importRouter);
+  app.use('/api/integrations', integrationsRouter);
 
   // === 404 handler ===
   app.use((req, res) => {

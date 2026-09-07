@@ -6,6 +6,7 @@ import {
   LayoutDashboard,
   BookOpen,
   Users,
+  Plug,
 } from 'lucide-react';
 
 /**
@@ -13,6 +14,7 @@ import {
  *
  * Faz 2: Products, Categories, Import
  * Faz 3: Customers (Müşteriler)
+ * Faz 4: ERP Entegrasyonu
  * Faz 5+: Catalogs, Viewer
  */
 const AdminSidebar = () => {
@@ -61,6 +63,14 @@ const AdminSidebar = () => {
         <NavLink to="/admin/customers/import" className={linkClass}>
           <Upload className="h-4 w-4" />
           Toplu İçe Aktar
+        </NavLink>
+
+        <div className="px-3 pb-1 pt-4 text-xs font-semibold uppercase tracking-wider text-slate-400">
+          Entegrasyon
+        </div>
+        <NavLink to="/admin/integrations" className={linkClass}>
+          <Plug className="h-4 w-4" />
+          ERP Ayarları
         </NavLink>
       </nav>
     </aside>
