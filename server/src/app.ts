@@ -1,6 +1,7 @@
 import express, { Application } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
 import { pinoHttp } from 'pino-http';
 import { env } from './config/env';
 import { logger } from './utils/logger';
@@ -30,8 +31,35 @@ import pdfRouter from './routes/pdf';
 export const createApp = (): Application => {
   const app = express();
 
-  // === Güvenlik ===
-  app.use(helmet());
+  // === Guvenlik ===
+  // Helmet: HTTP security header'lari (CSP, HSTS, X-Frame-Options, vs.)
+  // contentSecurityPolicy siki tutulmuyor cunku image src data: gerekli
+  app.use(
+    helmet({
+      contentSecurityPolicy: false,
+      crossOriginEmbedderPolicy: false,
+    }),
+  );
+
+  // === Rate limiting (auth + import endpoint'leri icin) ===
+  // Brute force saldirilarini onlemek icin
+  const authRateLimiter = rateLimit({
+    windowMs: 60_000, // 1 dakika
+    max: 10,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'TooManyRequests', message: 'Cok fazla istek, lutfen bekleyin' },
+  });
+  const importRateLimiter = rateLimit({
+    windowMs: 60_000,
+    max: 20,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'TooManyRequests', message: 'Cok fazla import istegi' },
+  });
+
+  // === Trust proxy (Railway arkasinda calismak icin) ===
+  app.set('trust proxy', 1);
 
   // === CORS ===
   app.use(
@@ -73,6 +101,13 @@ export const createApp = (): Application => {
 
   // === Routes ===
   app.use('/api', healthRouter);
+  // Auth + import rate limit (brute force koruma)
+  app.use('/api/auth/login', authRateLimiter);
+  app.use('/api/auth/register', authRateLimiter);
+  app.use('/api/auth/refresh', authRateLimiter);
+  app.use('/api/products/import', importRateLimiter);
+  app.use('/api/customers/import', importRateLimiter);
+
   app.use('/api/auth', authRouter);
   app.use('/api/categories', categoryRouter);
   app.use('/api/products', productRouter);
