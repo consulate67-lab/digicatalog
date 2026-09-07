@@ -52,7 +52,7 @@ Multi-tenant SaaS — her kiracı kendi ERP'sinden ürün/müşteri verisini çe
 
 ---
 
-## Faz 1 — Auth & Multi-tenant (3 commit)
+## Faz 1 — Auth & Multi-tenant ✅ (tamamlandı)
 
 **Hedef:** Tenant kayıt, login, JWT, row-level izolasyon.
 
@@ -72,9 +72,9 @@ Multi-tenant SaaS — her kiracı kendi ERP'sinden ürün/müşteri verisini çe
 - `tenantFilter` → Drizzle query helper'ları (`withTenant(qb, tenantId)`)
 
 **Commit'ler:**
-1. `feat(db): tenants + users schema`
-2. `feat(auth): register/login/JWT + middleware`
-3. `feat(client): login page + auth context + protected routes`
+1. `a1822a7` `feat(db): tenants + users schema` (schema + migration)
+2. `65b83c0` `feat(auth): register/login/refresh/me + JWT middleware` (4 endpoint, authMiddleware, requireRole, withTenant helper)
+3. `94d6a13` `feat(client): auth flow (Login/Register/Dashboard, Zustand, ProtectedRoute)` (auth store, JWT interceptor, route guard, header user menüsü)
 
 ---
 
