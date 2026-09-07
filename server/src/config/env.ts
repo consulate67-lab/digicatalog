@@ -22,6 +22,8 @@ const envSchema = z.object({
     .default('postgresql://postgres:postgres@localhost:5432/digicatalog'),
 
   JWT_SECRET: z.string().min(16, 'JWT_SECRET must be at least 16 characters'),
+  JWT_ACCESS_EXPIRES_IN: z.string().default('15m'),
+  JWT_REFRESH_EXPIRES_IN: z.string().default('7d'),
 
   ALLOWED_ORIGINS: z
     .string()

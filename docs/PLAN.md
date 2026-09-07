@@ -29,7 +29,7 @@ Multi-tenant SaaS — her kiracı kendi ERP'sinden ürün/müşteri verisini çe
 
 ---
 
-## Faz 0 — Altyapı 🟡 (devam ediyor)
+## Faz 0 — Altyapı ✅ (tamamlandı)
 
 **Hedef:** Çalışan monorepo: server sağlık check + client landing sayfası.
 
@@ -41,8 +41,14 @@ Multi-tenant SaaS — her kiracı kendi ERP'sinden ürün/müşteri verisini çe
 - README, AGENTS.md, PLAN.md, .gitignore
 
 **Commit'ler (2):**
-1. `chore: monorepo scaffold` — root config, workspaces, docs
-2. `feat: server + client base scaffolding` — server boots, client renders
+1. `chore: monorepo scaffold` — root config, workspaces, docs (`ccc7b2e`)
+2. `feat: server + client base scaffolding` — server boots, client renders (`337708f`)
+
+**Doğrulamalar:**
+- `npm install`: 437 paket kuruldu
+- Server `tsc`: 0 hata
+- Client `vite build`: 263KB JS / 12KB CSS, 1688 module transform
+- `GET /api/ping`: 200 OK, JSON response (curl ile canlı test edildi)
 
 ---
 

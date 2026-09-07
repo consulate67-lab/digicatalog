@@ -60,7 +60,8 @@ coverage/
 *.lcov
 
 # Drizzle generated
-server/drizzle/meta/
+# server/drizzle/meta/   ← meta/ tracked (snapshot + journal migration için şart)
+server/drizzle/_journal*
 
 # Railway
 .railway/

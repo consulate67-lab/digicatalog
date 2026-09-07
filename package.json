@@ -21,7 +21,9 @@
     "install:all": "npm install"
   },
   "devDependencies": {
-    "concurrently": "^9.1.0"
+    "concurrently": "^9.1.0",
+    "drizzle-orm": "^0.45.2",
+    "drizzle-kit": "^0.31.10"
   },
   "engines": {
     "node": ">=20.0.0"
