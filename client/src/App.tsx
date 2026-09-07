@@ -31,6 +31,9 @@ const Catalogs = lazy(() => import('./pages/admin/Catalogs'));
 const CatalogsNew = lazy(() => import('./pages/admin/CatalogsNew'));
 const CatalogsEdit = lazy(() => import('./pages/admin/CatalogsEdit'));
 
+// Faz 6: lazy-load viewer (public, no auth)
+const Viewer = lazy(() => import('./pages/Viewer'));
+
 const PageLoader = () => (
   <div className="flex min-h-[400px] items-center justify-center">
     <Loader2 className="h-8 w-8 animate-spin text-brand-600" />
@@ -64,6 +67,16 @@ const App = () => {
             <ProtectedRoute>
               <Dashboard />
             </ProtectedRoute>
+          }
+        />
+
+        {/* Public Viewer (no auth, customer-facing) */}
+        <Route
+          path="/viewer/:catalogId"
+          element={
+            <Suspense fallback={<PageLoader />}>
+              <Viewer />
+            </Suspense>
           }
         />
 
