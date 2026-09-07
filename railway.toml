@@ -1,0 +1,14 @@
+# Railway deployment config (root-level)
+# Tek servis hem server hem client'i serve eder (Faz 8'de static build eklenince)
+# Build: Nixpacks auto-detects package.json scripts
+# Start: npm start → server/dist/index.js
+
+[build]
+builder = "NIXPACKS"
+
+[deploy]
+startCommand = "npm start"
+healthcheckPath = "/api/ping"
+healthcheckTimeout = 100
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10

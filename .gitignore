@@ -1,0 +1,71 @@
+# Dependencies
+node_modules/
+*/node_modules/
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+*.env
+!.env.example
+
+# Build outputs
+dist/
+build/
+*/dist/
+*/build/
+*.tsbuildinfo
+.next/
+out/
+client/dist/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Temporary / cleanup
+tmp/
+temp/
+*.tmp
+.trash*/
+.trash-*/
+
+# AI tool state
+.gemini/
+.cursor/
+.aider*
+
+# Test coverage
+coverage/
+*.lcov
+
+# Drizzle generated
+server/drizzle/meta/
+
+# Railway
+.railway/
+
+# Capacitor / Mobile (ileride eklenirse)
+*.apk
+*.aab
+*.ipa
