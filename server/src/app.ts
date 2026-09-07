@@ -14,6 +14,7 @@ import importRouter from './routes/import';
 import integrationsRouter from './routes/integrations';
 import catalogRouter from './routes/catalogs';
 import viewerRouter from './routes/viewer';
+import pdfRouter from './routes/pdf';
 
 /**
  * Express app factory. Tüm middleware + route registry burada.
@@ -80,6 +81,7 @@ export const createApp = (): Application => {
   app.use('/api/customers/import', importRouter);
   app.use('/api/integrations', integrationsRouter);
   app.use('/api/catalogs', catalogRouter);
+  app.use('/api', pdfRouter);
 
   // === Public viewer (no auth) ===
   // Musteri ziyaretinde katalog linki acildiginda bu route cagirilir.
