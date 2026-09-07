@@ -74,4 +74,4 @@ Bu dosya, DijiCatalog projesi üzerinde çalışan AI agent'lar (Mavis dahil) i�
 | 5 | Katalog motoru | ✅ tamamlandı (commit 9888ce6 + 0002b2e + c07e941) |
 | 6 | Ürün tanıtım ekranı + modal | ✅ tamamlandı (commit cdc79ad + bb064bd) |
 | 7 | PDF üretimi | ⏳ |
-| 8 | Polish & Railway deploy | ⏳ |
+| 8 | Polish & Railway deploy | ✅ tamamlandı (commit 1f44343 + commit 8.2) |

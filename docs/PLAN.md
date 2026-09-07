@@ -257,7 +257,7 @@ cd D:\DigiCatalog\client && npm run dev
 
 ---
 
-## Faz 8 — Polish & Deploy (2 commit)
+## Faz 8 — Polish & Deploy ✅ (tamamlandı)
 
 **Hedef:** Production-ready, Railway'de çalışıyor.
 
