@@ -70,7 +70,7 @@ Bu dosya, DijiCatalog projesi üzerinde çalışan AI agent'lar (Mavis dahil) i�
 | 1 | Auth & multi-tenant | ✅ tamamlandı (commit a1822a7 + 65b83c0 + 94d6a13) |
 | 2 | Ürün yönetimi | ✅ tamamlandı (commit a65608f + 91c0399 + 839eccc + 56a24e5) |
 | 3 | Müşteri yönetimi | ✅ tamamlandı (commit c264488 + aa84442) |
-| 4 | ERP entegrasyonu | ⏳ |
+| 4 | ERP entegrasyonu | ✅ tamamlandı (commit ef3c7b8 + d5f6494) |
 | 5 | Katalog motoru | ⏳ |
 | 6 | Ürün tanıtım ekranı + modal | ⏳ |
 | 7 | PDF üretimi | ⏳ |

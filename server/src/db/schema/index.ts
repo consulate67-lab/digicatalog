@@ -16,3 +16,7 @@ export * from './categories';
 export * from './products';
 export * from './productImages';
 export * from './customers';
+export * from './catalogs';
+export * from './catalogItems';
+export * from './catalogCustomers';
+export * from './catalogFieldConfig';

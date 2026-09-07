@@ -148,7 +148,7 @@ cd D:\DigiCatalog\client && npm run dev
 
 ---
 
-## Faz 4 — ERP Entegrasyon Altyapısı (2 commit)
+## Faz 4 — ERP Entegrasyon Altyapısı ✅ (tamamlandı)
 
 **Hedef:** Adapter pattern, mock provider, ürün/müşteri senkronizasyonu.
 
@@ -167,8 +167,20 @@ cd D:\DigiCatalog\client && npm run dev
 - `POST /api/integrations/erp/sync/customers` → fetch + upsert
 
 **Commit'ler:**
-1. `feat(erp): BaseErpAdapter interface + MockProvider + tenant config`
-2. `feat(erp): sync endpoints + admin UI for ERP config`
+1. `ef3c7b8` `feat(erp): BaseErpAdapter + MockProvider + KorgunMssqlAdapter + registry` (5 dosya, mssql paketi)
+2. `d5f6494` `feat(erp): sync service + REST API + admin UI` (sync + 5 endpoint + /admin/integrations sayfası)
+
+**Provider'lar:**
+- `mock`: Test/demo, JSON seed (5 ürün, 3 müşteri)
+- `korgun-mssql`: Korgün ERP'ye doğrudan MSSQL bağlantısı (StokKart, CariKart). Kullanıcı seçti.
+
+**Endpoint'ler:**
+- GET /api/integrations/erp/providers
+- GET /api/integrations/erp (şifre redakte)
+- PUT /api/integrations/erp (admin)
+- POST /api/integrations/erp/test (admin)
+- POST /api/integrations/erp/sync/products (admin/member)
+- POST /api/integrations/erp/sync/customers (admin/member)
 
 ---
 
