@@ -63,6 +63,12 @@ coverage/
 # server/drizzle/meta/   ← meta/ tracked (snapshot + journal migration için şart)
 server/drizzle/_journal*
 
+# Server static client (build artifact, npm run build ile üretilir)
+server/public/
+
+# Railway
+.railway/
+
 # Railway
 .railway/
 

@@ -2,6 +2,8 @@ import express, { Application } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
+import path from 'path';
+import fs from 'fs';
 import { pinoHttp } from 'pino-http';
 import { env } from './config/env';
 import { logger } from './utils/logger';
@@ -122,6 +124,19 @@ export const createApp = (): Application => {
   // Musteri ziyaretinde katalog linki acildiginda bu route cagirilir.
   // Sadece 'active' statuslu kataloglara erisim saglar.
   app.use('/api/viewer', viewerRouter);
+
+  // === Static client build (production) ===
+  if (env.NODE_ENV === 'production') {
+    const publicDir = path.join(__dirname, '..', 'public');
+    if (fs.existsSync(publicDir)) {
+      app.use(express.static(publicDir));
+      app.get(/^(?!\/api).*/, (_req, res) => {
+        res.sendFile(path.join(publicDir, 'index.html'));
+      });
+    } else {
+      logger.warn('server/public bulunamadi - `npm run build` calistirin.');
+    }
+  }
 
   // === 404 handler ===
   app.use((req, res) => {
