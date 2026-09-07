@@ -132,8 +132,27 @@ export const createApp = (): Application => {
   if (env.NODE_ENV === 'production') {
     const publicDir = path.join(__dirname, '..', 'public');
     if (fs.existsSync(publicDir)) {
-      app.use(express.static(publicDir));
+      // Hashed asset'ler (assets/*) uzun sure cache'lenebilir —
+      // dosya adi hash icerigi temsil eder, degismez.
+      app.use(
+        '/assets',
+        express.static(path.join(publicDir, 'assets'), {
+          maxAge: '1y',
+          immutable: true,
+        }),
+      );
+      // Diger statik dosyalar (favicon, vs.) — kisa cache
+      app.use(
+        express.static(publicDir, {
+          maxAge: '1h',
+        }),
+      );
+      // SPA fallback — /api/* haricindeki GET isteklerine index.html
+      // no-cache ile ki yeni deploy'larda browser eski HTML'i tutmasin.
       app.get(/^(?!\/api).*/, (_req, res) => {
+        res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+        res.set('Pragma', 'no-cache');
+        res.set('Expires', '0');
         res.sendFile(path.join(publicDir, 'index.html'));
       });
     } else {
