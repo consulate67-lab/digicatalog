@@ -7,6 +7,7 @@ import {
   BookOpen,
   Users,
   Plug,
+  BookOpenCheck,
 } from 'lucide-react';
 
 /**
@@ -71,6 +72,14 @@ const AdminSidebar = () => {
         <NavLink to="/admin/integrations" className={linkClass}>
           <Plug className="h-4 w-4" />
           ERP Ayarları
+        </NavLink>
+
+        <div className="px-3 pb-1 pt-4 text-xs font-semibold uppercase tracking-wider text-slate-400">
+          Katalog
+        </div>
+        <NavLink to="/admin/catalogs" className={linkClass}>
+          <BookOpenCheck className="h-4 w-4" />
+          Kataloglar
         </NavLink>
       </nav>
     </aside>

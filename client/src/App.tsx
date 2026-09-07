@@ -26,6 +26,11 @@ const CustomerImport = lazy(() => import('./pages/admin/CustomerImport'));
 // Faz 4: lazy-load integrations
 const Integrations = lazy(() => import('./pages/admin/Integrations'));
 
+// Faz 5: lazy-load catalogs
+const Catalogs = lazy(() => import('./pages/admin/Catalogs'));
+const CatalogsNew = lazy(() => import('./pages/admin/CatalogsNew'));
+const CatalogsEdit = lazy(() => import('./pages/admin/CatalogsEdit'));
+
 const PageLoader = () => (
   <div className="flex min-h-[400px] items-center justify-center">
     <Loader2 className="h-8 w-8 animate-spin text-brand-600" />
@@ -83,6 +88,9 @@ const App = () => {
           <Route path="customers/:id" element={<CustomersEdit />} />
           <Route path="customers/import" element={<CustomerImport />} />
           <Route path="integrations" element={<Integrations />} />
+          <Route path="catalogs" element={<Catalogs />} />
+          <Route path="catalogs/new" element={<CatalogsNew />} />
+          <Route path="catalogs/:id" element={<CatalogsEdit />} />
         </Route>
 
         {/* 404 */}
