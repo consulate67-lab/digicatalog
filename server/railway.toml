@@ -1,0 +1,13 @@
+# Railway deployment config (server)
+# Nixpacks auto-detects Node project, runs npm install + npm run build
+# Start: npm start → node dist/index.js
+
+[build]
+builder = "NIXPACKS"
+
+[deploy]
+startCommand = "npm start"
+healthcheckPath = "/api/ping"
+healthcheckTimeout = 100
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10
