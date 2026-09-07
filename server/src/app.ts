@@ -141,14 +141,28 @@ export const createApp = (): Application => {
           immutable: true,
         }),
       );
-      // Diger statik dosyalar (favicon, vs.) — kisa cache
-      app.use(
-        express.static(publicDir, {
-          maxAge: '1h',
-        }),
-      );
+      // Diger statik dosyalar (favicon, vs.) — kisa cache.
+      // ONEMLI: index.html'i yakalayip no-cache ile donmesi lazim
+      // (fallback'ten once). Boylece yeni deploy'larda browser
+      // her seferinde yeni HTML'i cekip yeni hashed asset'lere
+      // yonlendirilir. Eski HTML + eski asset hash = 500.
+      const noCacheStatic = express.static(publicDir, {
+        setHeaders: (res, filePath) => {
+          if (filePath.endsWith('.html')) {
+            res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+            res.setHeader('Pragma', 'no-cache');
+            res.setHeader('Expires', '0');
+          } else {
+            res.setHeader('Cache-Control', 'public, max-age=3600');
+          }
+        },
+      });
+      app.use(noCacheStatic);
       // SPA fallback — /api/* haricindeki GET isteklerine index.html
-      // no-cache ile ki yeni deploy'larda browser eski HTML'i tutmasin.
+      // (dosya disk'te bulunmazsa fallback devreye girer, ama noCacheStatic
+      // once yakaladigi icin bu genelde calismaz. Yine de SPA route
+      // /admin/products gibi path'ler icin gerekli — Vite bu path'leri
+      // dosya olarak olusturmaz.)
       app.get(/^(?!\/api).*/, (_req, res) => {
         res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
         res.set('Pragma', 'no-cache');
