@@ -9,8 +9,11 @@ import {
   Eye,
   Users,
   Package,
+  FileDown,
+  Loader2,
 } from 'lucide-react';
 import api from '../../lib/api';
+import { downloadCatalogPdf } from '../../lib/pdfDownload';
 
 interface CatalogSummary {
   id: string;
@@ -43,6 +46,23 @@ const Catalogs = () => {
   const queryClient = useQueryClient();
   const [statusFilter, setStatusFilter] = useState<'all' | 'draft' | 'active' | 'archived'>('all');
   const [search, setSearch] = useState('');
+  const [pdfDownloadingId, setPdfDownloadingId] = useState<string | null>(null);
+  const [pdfError, setPdfError] = useState<string | null>(null);
+
+  const handleDownloadPdf = async (catalogId: string) => {
+    setPdfError(null);
+    setPdfDownloadingId(catalogId);
+    try {
+      await downloadCatalogPdf({ catalogId, filenamePrefix: 'katalog' });
+    } catch (err) {
+      setPdfError(
+        (err as { response?: { data?: { message?: string } } })?.response?.data?.message ??
+        'PDF oluşturulamadı',
+      );
+    } finally {
+      setPdfDownloadingId(null);
+    }
+  };
 
   const catalogsQuery = useQuery({
     queryKey: ['catalogs', statusFilter, search],
@@ -87,6 +107,11 @@ const Catalogs = () => {
       </div>
 
       {/* Filtreler */}
+      {pdfError && (
+        <div className="card mt-6 border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
+          {pdfError}
+        </div>
+      )}
       <div className="card mt-6 flex flex-wrap items-end gap-3">
         <div className="flex-1 min-w-[200px]">
           <label className="block text-xs font-medium text-slate-600">Arama</label>
@@ -174,6 +199,18 @@ const Catalogs = () => {
                   </td>
                   <td className="px-4 py-3 text-right">
                     <div className="flex items-center justify-end gap-1">
+                      <button
+                        onClick={() => handleDownloadPdf(c.id)}
+                        disabled={pdfDownloadingId === c.id || c.itemCount === 0}
+                        className="rounded p-1.5 text-slate-500 hover:bg-brand-50 hover:text-brand-700 disabled:opacity-50"
+                        title={c.itemCount === 0 ? 'Önce ürün ekleyin' : 'PDF İndir'}
+                      >
+                        {pdfDownloadingId === c.id ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <FileDown className="h-4 w-4" />
+                        )}
+                      </button>
                       {c.status === 'active' && (
                         <Link
                           to={`/viewer/${c.id}`}
