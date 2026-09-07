@@ -9,6 +9,7 @@ import healthRouter from './routes/health';
 import authRouter from './routes/auth';
 import categoryRouter from './routes/categories';
 import productRouter from './routes/products';
+import importRouter from './routes/import';
 
 /**
  * Express app factory. Tüm middleware + route registry burada.
@@ -48,6 +49,11 @@ export const createApp = (): Application => {
   app.use(express.json({ limit: '1mb' }));
   app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 
+  // === Raw body parser for XML imports ===
+  // /api/products/import/xml accepts both multipart and raw text/xml.
+  // Multer handles multipart, raw body needs explicit content-type.
+  app.use('/api/products/import/xml', express.text({ type: ['text/xml', 'application/xml'], limit: '10mb' }));
+
   // === Request logging ===
   app.use(
     pinoHttp({
@@ -65,6 +71,7 @@ export const createApp = (): Application => {
   app.use('/api/auth', authRouter);
   app.use('/api/categories', categoryRouter);
   app.use('/api/products', productRouter);
+  app.use('/api/products/import', importRouter);
 
   // === 404 handler ===
   app.use((req, res) => {
