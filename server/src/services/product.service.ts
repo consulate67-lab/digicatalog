@@ -1,4 +1,4 @@
-import { eq, and, or, ilike, desc, asc, sql, type SQL } from 'drizzle-orm';
+import { eq, and, or, ilike, desc, asc, sql, inArray, type SQL } from 'drizzle-orm';
 import { db } from '../config/database';
 import {
   products,
@@ -196,7 +196,7 @@ export const listProducts = async (
     const images = await db
       .select()
       .from(productImages)
-      .where(sql`${productImages.productId} = ANY(${productIds})`);
+      .where(inArray(productImages.productId, productIds));
     for (const img of images) {
       const existing = imageMap.get(img.productId) ?? { count: 0, primary: null };
       existing.count += 1;
