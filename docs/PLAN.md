@@ -126,7 +126,7 @@ cd D:\DigiCatalog\client && npm run dev
 
 ---
 
-## Faz 3 — Müşteri Yönetimi (2 commit)
+## Faz 3 — Müşteri Yönetimi ✅ (tamamlandı)
 
 **Hedef:** Manuel müşteri CRUD + Excel bulk import.
 
@@ -138,8 +138,13 @@ cd D:\DigiCatalog\client && npm run dev
 - `POST /api/customers/import/excel` (multipart)
 
 **Commit'ler:**
-1. `feat(db + api): customers schema + CRUD + Excel import`
-2. `feat(client): customer management UI`
+1. `c264488` `feat(db + api): customers schema + CRUD + Excel import` (customers tablosu, customer_source enum, 5 endpoint, Excel import)
+2. `aa84442` `feat(client): customer management UI` (5 lazy sayfa + sidebar)
+
+**Doğrulamalar (DB'siz):**
+- Server `tsc`: 0 hata
+- Client `vite build`: 1712 modules, 293KB JS / 21KB CSS
+- Tüm admin route'ları auth gerekli, 401 dönüyor
 
 ---
 
