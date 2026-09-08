@@ -60,9 +60,9 @@ COPY --from=builder /app/server/drizzle.config.ts ./server/
 COPY --from=builder /app/server/.env.example ./server/.env.example
 COPY --from=builder /app/drizzle ./drizzle
 
-# Tailscale state icin volume
+# Tailscale state dizini (Railway volume degil, container icinde)
+# Her restart'ta state kaybolur ama reusable auth key ile yeniden auth olur
 RUN mkdir -p /var/lib/tailscale /var/run/tailscale
-VOLUME ["/var/lib/tailscale"]
 
 # dumb-init: PID 1 olarak, sinyal yonetimi icin
 COPY scripts/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
