@@ -1,10 +1,11 @@
 # Railway deployment config (root-level)
 # Tek servis hem server hem client'i serve eder (Faz 8'de static build eklenince)
-# Build: Nixpacks auto-detects package.json scripts
-# Start: npm start → server/dist/index.js
+# Build: custom Dockerfile (Tailscale VPN destegi icin)
+# Start: docker-entrypoint.sh → tailscale up → npm start
 
 [build]
-builder = "NIXPACKS"
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
 
 [deploy]
 startCommand = "npm start"
