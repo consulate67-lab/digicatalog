@@ -81,11 +81,14 @@ const Integrations = () => {
     },
   });
 
-  // İlk yüklendiğinde provider'ı set et
+  // İlk yüklendiğinde provider'ı set et (bir kere, sonra override etme)
   useEffect(() => {
+    if (selectedProvider) return; // Zaten secili, dokunma
     if (configQuery.data?.provider) {
+      // Kayitli config varsa onun provider'ini kullan
       setSelectedProvider(configQuery.data.provider);
-    } else if (providersQuery.data && providersQuery.data.length > 0 && !selectedProvider) {
+    } else if (providersQuery.data && providersQuery.data.length > 0) {
+      // Yoksa ilk provider'a default et (genelde Mock)
       setSelectedProvider(providersQuery.data[0].name);
     }
   }, [configQuery.data, providersQuery.data, selectedProvider]);
