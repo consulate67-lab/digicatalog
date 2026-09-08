@@ -1,0 +1,18 @@
+# Nixpacks build configuration
+# Default: npm ci --omit=dev → devDependencies (tsc, vite, drizzle-kit) yuklenmiyor
+# Build sirasinda tsc/vite lazim → install phase'de dev deps zorla dahil et
+# Production runtime'da gerekmez, build sonrasi prune edilebilir
+
+[phases.install]
+cmds = [
+  "npm ci --include=dev --legacy-peer-deps",
+]
+
+[phases.build]
+cmds = [
+  "npm run build",
+  "node scripts/copy-client-to-server.cjs",
+]
+
+[start]
+cmd = "npm start"
