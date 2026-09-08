@@ -85,25 +85,114 @@ const App = () => {
           path="/admin"
           element={
             <ProtectedRoute>
-              <Suspense fallback={<PageLoader />}>
-                <AdminLayout />
-              </Suspense>
+              <AdminLayout />
             </ProtectedRoute>
           }
         >
-          <Route path="products" element={<Products />} />
-          <Route path="products/new" element={<ProductsNew />} />
-          <Route path="products/:id" element={<ProductsEdit />} />
-          <Route path="products/import" element={<ProductImport />} />
-          <Route path="categories" element={<Categories />} />
-          <Route path="customers" element={<Customers />} />
-          <Route path="customers/new" element={<CustomersNew />} />
-          <Route path="customers/:id" element={<CustomersEdit />} />
-          <Route path="customers/import" element={<CustomerImport />} />
-          <Route path="integrations" element={<Integrations />} />
-          <Route path="catalogs" element={<Catalogs />} />
-          <Route path="catalogs/new" element={<CatalogsNew />} />
-          <Route path="catalogs/:id" element={<CatalogsEdit />} />
+          <Route
+            path="products"
+            element={
+              <Suspense fallback={<PageLoader />}>
+                <Products />
+              </Suspense>
+            }
+          />
+          <Route
+            path="products/new"
+            element={
+              <Suspense fallback={<PageLoader />}>
+                <ProductsNew />
+              </Suspense>
+            }
+          />
+          <Route
+            path="products/:id"
+            element={
+              <Suspense fallback={<PageLoader />}>
+                <ProductsEdit />
+              </Suspense>
+            }
+          />
+          <Route
+            path="products/import"
+            element={
+              <Suspense fallback={<PageLoader />}>
+                <ProductImport />
+              </Suspense>
+            }
+          />
+          <Route
+            path="categories"
+            element={
+              <Suspense fallback={<PageLoader />}>
+                <Categories />
+              </Suspense>
+            }
+          />
+          <Route
+            path="customers"
+            element={
+              <Suspense fallback={<PageLoader />}>
+                <Customers />
+              </Suspense>
+            }
+          />
+          <Route
+            path="customers/new"
+            element={
+              <Suspense fallback={<PageLoader />}>
+                <CustomersNew />
+              </Suspense>
+            }
+          />
+          <Route
+            path="customers/:id"
+            element={
+              <Suspense fallback={<PageLoader />}>
+                <CustomersEdit />
+              </Suspense>
+            }
+          />
+          <Route
+            path="customers/import"
+            element={
+              <Suspense fallback={<PageLoader />}>
+                <CustomerImport />
+              </Suspense>
+            }
+          />
+          <Route
+            path="integrations"
+            element={
+              <Suspense fallback={<PageLoader />}>
+                <Integrations />
+              </Suspense>
+            }
+          />
+          <Route
+            path="catalogs"
+            element={
+              <Suspense fallback={<PageLoader />}>
+                <Catalogs />
+              </Suspense>
+            }
+          />
+          <Route
+            path="catalogs/new"
+            element={
+              <Suspense fallback={<PageLoader />}>
+                <CatalogsNew />
+              </Suspense>
+            }
+          />
+          <Route
+            path="catalogs/:id"
+            element={
+              <Suspense fallback={<PageLoader />}>
+                <CatalogsEdit />
+              </Suspense>
+            }
+          />
         </Route>
 
         {/* 404 */}
