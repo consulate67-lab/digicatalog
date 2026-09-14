@@ -63,9 +63,33 @@ Write-Host "JWT_SECRET    : $($JwtSecret.Substring(0, 16))..."
 Write-Host "GitHub Repo   : $GitHubRepo ($GitHubBranch)"
 Hr
 
-# === ADIM 1: MSSQL erişim kontrolü + DB oluştur ===
+# === ADIM 1: Repo klonla ===
 Hr
-Log "ADIM 1/7: MSSQL baglantisi + DB olustur..."
+Log "ADIM 1/7: Repo klonlaniyor..."
+if (Test-Path $AppDir) {
+    Warn "$AppDir zaten var, zorla senkronize ediliyor (reset --hard)..."
+    Set-Location $AppDir
+    git fetch origin 2>&1 | Out-String | Write-Host
+    # Local'de conflict olmamasi icin zorla remote'a senkronla
+    git reset --hard "origin/$GitHubBranch" 2>&1 | Out-String | Write-Host
+    git clean -fd 2>&1 | Out-String | Write-Host
+} else {
+    git clone --branch $GitHubBranch "https://github.com/$GitHubRepo.git" $AppDir
+    Set-Location $AppDir
+}
+
+# === ADIM 2: Install + Build ===
+Hr
+Log "ADIM 2/7: npm install + build..."
+Set-Location $AppDir
+npm install --include=dev 2>&1 | Select-Object -Last 3 | Write-Host
+Log "TypeScript build..."
+Set-Location "$AppDir\server"
+npm run build 2>&1 | Select-Object -Last 3 | Write-Host
+
+# === ADIM 3: MSSQL DB oluştur (node_modules hazır olduktan sonra) ===
+Hr
+Log "ADIM 3/7: MSSQL baglantisi + DB olustur..."
 
 $createDbScript = Join-Path $AppDir 'server\scripts\create-mssql-db.js'
 if (Test-Path $createDbScript) {
@@ -82,31 +106,6 @@ if (Test-Path $createDbScript) {
 } else {
     Warn "create-mssql-db.js bulunamadi, DB olusturma adimi atlanir"
 }
-
-# === ADIM 2: Repo klonla ===
-Hr
-Log "ADIM 2/7: Repo klonlaniyor..."
-if (Test-Path $AppDir) {
-    Warn "$AppDir zaten var, zorla senkronize ediliyor (reset --hard)..."
-    Set-Location $AppDir
-    git fetch origin 2>&1 | Out-String | Write-Host
-    # Local'de conflict olmamasi icin zorla remote'a senkronla
-    # (Mevcut kurulum verileri $AppDir\logs ve $AppDir\server\.env korunur)
-    git reset --hard "origin/$GitHubBranch" 2>&1 | Out-String | Write-Host
-    git clean -fd 2>&1 | Out-String | Write-Host
-} else {
-    git clone --branch $GitHubBranch "https://github.com/$GitHubRepo.git" $AppDir
-    Set-Location $AppDir
-}
-
-# === ADIM 3: Install + Build ===
-Hr
-Log "ADIM 3/7: npm install + build..."
-Set-Location $AppDir
-npm install --include=dev 2>&1 | Select-Object -Last 3 | Write-Host
-Log "TypeScript build..."
-Set-Location "$AppDir\server"
-npm run build 2>&1 | Select-Object -Last 3 | Write-Host
 
 # === ADIM 4: .env ===
 Hr
