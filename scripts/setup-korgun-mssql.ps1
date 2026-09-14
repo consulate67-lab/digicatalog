@@ -69,12 +69,29 @@ Log "ADIM 1/7: Repo klonlaniyor..."
 if (Test-Path $AppDir) {
     Warn "$AppDir zaten var, zorla senkronize ediliyor (reset --hard)..."
     Set-Location $AppDir
-    git fetch origin 2>&1 | Out-String | Write-Host
-    # Local'de conflict olmamasi icin zorla remote'a senkronla
-    git reset --hard "origin/$GitHubBranch" 2>&1 | Out-String | Write-Host
-    git clean -fd 2>&1 | Out-String | Write-Host
+    # git fetch sırasında PowerShell native stderr'i RemoteException fırlatıyor
+    # (--quiet ile çıktı bastırılır, try/catch ile koruma sağlanır)
+    try {
+        git fetch origin --quiet 2>&1 | Out-Null
+    } catch {
+        Warn "git fetch basarisiz olabilir, devam ediliyor: $_"
+    }
+    try {
+        git reset --hard "origin/$GitHubBranch" 2>&1 | Out-String | Write-Host
+    } catch {
+        Warn "git reset basarisiz, devam ediliyor: $_"
+    }
+    try {
+        git clean -fd 2>&1 | Out-String | Write-Host
+    } catch {
+        Warn "git clean basarisiz, devam ediliyor: $_"
+    }
 } else {
-    git clone --branch $GitHubBranch "https://github.com/$GitHubRepo.git" $AppDir
+    try {
+        git clone --branch $GitHubBranch "https://github.com/$GitHubRepo.git" $AppDir
+    } catch {
+        Err "git clone basarisiz. Ag/internet erisimini kontrol et"
+    }
     Set-Location $AppDir
 }
 
