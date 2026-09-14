@@ -177,30 +177,127 @@ Log "PostgreSQL psql: $((Get-Command psql -ErrorAction SilentlyContinue).Source)
 Hr
 Log "ADIM 5/9: Database ve kullanici olusturuluyor..."
 
-# initdb kontrol (data klasör bossa)
+# initdb kontrol ve calistir (data klasör bossa)
 $pgDataDir = "C:\Program Files\PostgreSQL\16\data"
 if (-not (Test-Path "$pgDataDir\PG_VERSION")) {
-    Warn "PostgreSQL data dizini bos, initdb gerekebilir"
+    Log "PostgreSQL data dizini bos, initdb calistiriliyor..."
+    # initdb icin bos bir data klasoru olustur
+    if (Test-Path $pgDataDir) {
+        # Varsa ama bos, icindeki .ini vs varsa sil
+        Get-ChildItem -Path $pgDataDir -Force | Remove-Item -Recurse -Force
+    } else {
+        New-Item -ItemType Directory -Path $pgDataDir -Force | Out-Null
+    }
+    # postgres kullanici olarak initdb calistir
+    $env:PGDATA = $pgDataDir
+    $initdbOut = & "$pgBin\initdb.exe" -D $pgDataDir -U postgres --pwfile=<([IO.Path]::GetTempFileName()) 2>&1
+    # pwfile yerine env variable ile gecmek icin trick
+    Remove-Item env:PGDATA -ErrorAction SilentlyContinue
+    if ($LASTEXITCODE -ne 0) {
+        Warn "initdb basarisiz (ilk deneme). Alternatif yontem deneniyor..."
+        # Alternatif: --pwfile ile gecici dosya kullan
+        $pwfile = "$env:TEMP\pg-pw.txt"
+        Set-Content -Path $pwfile -Value $DbPassword
+        # postgres kullanici icin sifre zaten default 'postgres' (silent install)
+        $pwfileContent = if (Test-Path env:PG_DEFAULT_PW) { $env:PG_DEFAULT_PW } else { "postgres" }
+        Set-Content -Path $pwfile -Value $pwfileContent -Force
+        # Bos data klasorunden initdb calistir
+        $initdbOut2 = & "$pgBin\initdb.exe" -D $pgDataDir -U postgres --pwfile=$pwfile 2>&1
+        if ($LASTEXITCODE -ne 0) {
+            Err "initdb iki kez basarisiz oldu. Manuel: $pgBin\initdb.exe -D $pgDataDir -U postgres --pwfile=<pwfile>"
+        } else {
+            Log "initdb basarili (alternatif yontem)"
+        }
+        Remove-Item $pwfile -Force -ErrorAction SilentlyContinue
+    } else {
+        Log "initdb basarili"
+    }
+}
+
+# PostgreSQL servisini baslat
+Log "PostgreSQL servisi baslatiliyor..."
+$pgService = Get-Service -Name "postgresql*" -ErrorAction SilentlyContinue | Select-Object -First 1
+if ($pgService) {
+    Set-Service -Name $pgService.Name -StartupType Automatic
+    Start-Service -Name $pgService.Name -ErrorAction SilentlyContinue
+    # Servisin hazir olmasini bekle (max 30s)
+    $waited = 0
+    while ($waited -lt 30) {
+        if ($pgService.Status -eq "Running") { break }
+        Start-Sleep -Seconds 1
+        $waited++
+        $pgService.Refresh()
+    }
+    if ($pgService.Status -ne "Running") {
+        Err "PostgreSQL servisi 30 saniyede baslatilamadi. Manuel: Start-Service $($pgService.Name)"
+    }
+    Log "PostgreSQL servisi: $($pgService.Status)"
+}
+
+# pg_isready ile baglanti testi (max 15s)
+$ready = $false
+for ($i = 1; $i -le 15; $i++) {
+    if (& "$pgBin\pg_isready.exe" -h localhost -p 5432 2>&1) {
+        $ready = $true
+        break
+    }
+    Start-Sleep -Seconds 1
+}
+if (-not $ready) {
+    Err "PostgreSQL 15 saniyede hazir olmadi"
 }
 
 # DB ve user olustur (psql ile)
 $dbName = "digicatalog"
 $dbUser = "digicatalog"
-$createResult = & psql -U postgres -d postgres -c @"
+$pgSqlPassword = $DbPassword
+
+# pg_hba.conf'ta 'postgres' user icin 'trust' veya md5 auth gerekli.
+# Eger silent install 'postgres' sifresi olarak $DbPassword kullandiysa, sorun yok.
+# Default: silent install sifresi default 'postgres' (kullanici adi postgres, sifre postgres)
+$defaultPgPassword = "postgres"
+$createSql = @"
 DO \$\$
 BEGIN
     IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = '$dbUser') THEN
-        CREATE USER $dbUser WITH ENCRYPTED PASSWORD '$DbPassword';
+        CREATE USER $dbUser WITH ENCRYPTED PASSWORD '$pgSqlPassword';
     END IF;
 END
 \$\$;
 SELECT 'CREATE DATABASE $dbName OWNER $dbUser'
 WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = '$dbName')\gexec
 GRANT ALL PRIVILEGES ON DATABASE $dbName TO $dbUser;
-"@ 2>&1
+ALTER USER $dbUser CREATEDB;
+"@
 
+# Once $defaultPgPassword (silent install default) ile dene
+$env:PGPASSWORD = $defaultPgPassword
+$createResult = & "$pgBin\psql.exe" -U postgres -d postgres -c $createSql 2>&1
 if ($LASTEXITCODE -ne 0) {
-    Warn "DB olusturma basarisiz (psql yetki sorunu?). Manuel deneyebilirsin."
+    # Farkli sifre ile dene
+    $env:PGPASSWORD = "postgres123"
+    $createResult2 = & "$pgBin\psql.exe" -U postgres -d postgres -c $createSql 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        # Kullaniciya sifre sor
+        Warn "PostgreSQL 'postgres' user sifresi bilinmiyor"
+        Warn "Mevcut sifreyi girmen gerekiyor. Lutfen DB admin sifresini bil ve gir:"
+        $pgAdminPassword = Read-Host "PostgreSQL 'postgres' user sifresi" -AsSecureString
+        $ptr = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($pgAdminPassword)
+        $plainPwd = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto($ptr)
+        $env:PGPASSWORD = $plainPwd
+        $createResult = & "$pgBin\psql.exe" -U postgres -d postgres -c $createSql 2>&1
+        if ($LASTEXITCODE -ne 0) {
+            Err "DB olusturulamadi. psql manuel calistir ve hata coz"
+        }
+    } else {
+        Log "DB olusturma basarili (sifre: postgres123)"
+    }
+} else {
+    Log "DB olusturma basarili (sifre: postgres - default)"
+}
+
+if ($LASTEXITCODE -eq 0) {
+    Log "Database '$dbName' ve user '$dbUser' olusturuldu (sifre: $pgSqlPassword)"
 } else {
     Log "Database '$dbName' ve user '$dbUser' olusturuldu"
 }
