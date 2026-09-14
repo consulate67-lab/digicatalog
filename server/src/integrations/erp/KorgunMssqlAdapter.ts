@@ -58,6 +58,8 @@ const DEFAULT_CUSTOMER_COLUMNS = {
 
 export interface KorgunConfig {
   server: string;
+  /** Ayrı port field (önerilen). Server field içinde port yoksa boş bırakılabilir. */
+  port?: number;
   database: string;
   user: string;
   password: string;
@@ -100,8 +102,13 @@ export class KorgunMssqlAdapter extends BaseErpAdapter {
       await this.pool.close().catch(() => undefined);
       this.pool = null;
     }
+    // Server field'ı normalize et: kullanıcı "host,port" veya "host:port" gibi
+    // formatları yanlışlıkla girebiliyor. Ayrıca config.port (önerilen) öncelikli.
+    const { server: parsedServer, port: parsedPort } = parseServerField(this.cfg.server);
+    const port = this.cfg.port ?? parsedPort;
     const pool = new sql.ConnectionPool({
-      server: this.cfg.server,
+      server: parsedServer,
+      ...(port !== undefined ? { port } : {}),
       database: this.cfg.database,
       user: this.cfg.user,
       password: this.cfg.password,
@@ -119,7 +126,10 @@ export class KorgunMssqlAdapter extends BaseErpAdapter {
       },
     });
     this.pool = await pool.connect();
-    logger.info({ server: this.cfg.server, database: this.cfg.database }, 'Korgün MSSQL bağlantısı kuruldu');
+    logger.info(
+      { server: parsedServer, port: port ?? 'default', database: this.cfg.database },
+      'Korgün MSSQL bağlantısı kuruldu',
+    );
     return this.pool;
   }
 
@@ -252,4 +262,59 @@ const normalizeCurrency = (raw: string): string | undefined => {
   if (['GBP', '£'].includes(s)) return 'GBP';
   // Tanınmadı, default TRY (Türkiye pazarı)
   return 'TRY';
+};
+
+/**
+ * Server field'ı normalize et. Kullanıcı bazen virgülle/colon ile port
+ * yazabiliyor ("192.168.1.197,49746", "192.168.1.197:49746", "host\instance,1433").
+ * mssql kütüphanesi bu formatların hepsini kabul etmiyor; bu yüzden host/port'u
+ * ayırıp temiz server değeri + ayrı port dönüyoruz.
+ *
+ * Kabul edilen formatlar:
+ *   "host"                       → { server: "host" }
+ *   "host,1433"                      → { server: "host", port: 1433 }
+ *   "host:1433"                      → { server: "host", port: 1433 }
+ *   "host\INSTANCE"                  → { server: "host\INSTANCE" }   (port ignored)
+ *   "host\INSTANCE,1433"             → { server: "host\INSTANCE", port: 1433 }
+ *
+ * IPv6 için köşeli parantez kullanılırsa colon'a dokunulmaz.
+ */
+const parseServerField = (input: string): { server: string; port?: number } => {
+  const raw = (input ?? '').trim();
+  if (!raw) return { server: '' };
+  // Named instance varsa ("host\INSTANCE"), virgül/colon split'i sadece
+  // instance'dan sonrasına bakacak şekilde ayarla.
+  const backslashIdx = raw.indexOf('\\');
+  const head = backslashIdx >= 0 ? raw.slice(0, backslashIdx) : raw;
+  const tail = backslashIdx >= 0 ? raw.slice(backslashIdx) : '';
+  // IPv6 literal: [::1] veya [::1]:1433 — köşeli parantez varsa colon'u koru
+  const isIpv6 = head.startsWith('[');
+  let serverPart = head;
+  let port: number | undefined;
+  if (!isIpv6) {
+    // Önce virgül dene (en güvenli, hemen hemen her zaman "host,port" demek)
+    const commaIdx = head.lastIndexOf(',');
+    if (commaIdx > 0) {
+      const left = head.slice(0, commaIdx).trim();
+      const right = head.slice(commaIdx + 1).trim();
+      if (/^\d+$/.test(right)) {
+        serverPart = left;
+        port = parseInt(right, 10);
+      }
+    }
+    if (port === undefined) {
+      // Sonra colon (ama "host:port" veya IPv4:port; instance'larda instance sonrası : olabilir)
+      const colonIdx = head.lastIndexOf(':');
+      if (colonIdx > 0) {
+        const left = head.slice(0, colonIdx).trim();
+        const right = head.slice(colonIdx + 1).trim();
+        if (/^\d+$/.test(right) && !left.includes('\\')) {
+          serverPart = left;
+          port = parseInt(right, 10);
+        }
+      }
+    }
+  }
+  const server = serverPart + tail;
+  return port !== undefined ? { server, port } : { server };
 };

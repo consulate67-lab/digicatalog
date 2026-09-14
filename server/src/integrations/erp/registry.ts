@@ -27,7 +27,8 @@ export const PROVIDERS = {
     description: 'Korgün ERP veritabanına doğrudan MSSQL bağlantısı.',
     factory: (config: Record<string, unknown>) => new KorgunMssqlAdapter(config),
     configSchema: [
-      { key: 'server', label: 'Sunucu', type: 'string', required: true, placeholder: 'localhost\\SQLEXPRESS veya 192.168.1.100' },
+      { key: 'server', label: 'Sunucu', type: 'string', required: true, placeholder: '192.168.1.100 veya host\\SQLEXPRESS' },
+      { key: 'port', label: 'Port', type: 'string', required: false, placeholder: '1433' },
       { key: 'database', label: 'Veritabanı', type: 'string', required: true, placeholder: 'KorgunDB' },
       { key: 'user', label: 'Kullanıcı', type: 'string', required: true, placeholder: 'sa' },
       { key: 'password', label: 'Şifre', type: 'password', required: true, placeholder: '••••••' },
