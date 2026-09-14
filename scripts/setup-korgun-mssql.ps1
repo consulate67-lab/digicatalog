@@ -3,19 +3,11 @@
 # Hedef: 192.168.2.67 (Korgün ERP sunucusu) - DijiCatalog MSSQL üzerinden
 # Stack: Node.js 20 + MSSQL (zaten kurulu) + DijiCatalog + NSSM service
 #
-# Kullanım (Korgün'de PowerShell Admin):
-  -   .\setup-korgun-mssql.ps1 `
-  -     -MssqlServer 'localhost' `
-  -     -MssqlPort 49746 `
-  -     -MssqlInstance 'ABKA' `
-  -     -MssqlUser 'sa' `
-  -     -MssqlPassword 'Passw0rd!' `
-  -     -DbName 'DijiCatalog' `
-  -     -AppDir 'C:\digicatalog' `
-  -     -ServerIP '192.168.2.67'
+# Kullanim ornegi (Korgun'de PowerShell Admin):
+#   .\setup-korgun-mssql.ps1 -MssqlServer 'localhost' -MssqlInstance 'ABKA' -MssqlUser 'sa' -MssqlPassword 'sifre' -DbName 'DijiCatalog' -AppDir 'C:\digicatalog' -ServerIP '192.168.2.67'
 #
 # Env (opsiyonel):
-#   $Env:SKIP_INSTALL = "1"   → sadece DB+migrate+seed (node zaten kurulu)
+#   $Env:SKIP_INSTALL = "1"   -> sadece DB+migrate+seed (node zaten kurulu)
 # ============================================================================
 
 #Requires -RunAsAdministrator
