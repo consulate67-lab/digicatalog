@@ -1,5 +1,5 @@
 import { eq, and, type SQL } from 'drizzle-orm';
-import type { AnyPgColumn } from 'drizzle-orm/pg-core';
+import type { AnyMsSqlColumn } from 'drizzle-orm/mssql-core';
 
 /**
  * Tenant filter helper. Multi-tenant mimarinin temel taşı.
@@ -20,12 +20,12 @@ import type { AnyPgColumn } from 'drizzle-orm/pg-core';
  *     .from(products)
  *     .where(tenantAnd(products, tenantId, eq(products.isActive, true)));
  */
-export const withTenant = <T extends { tenantId: AnyPgColumn }>(
+export const withTenant = <T extends { tenantId: AnyMsSqlColumn }>(
   table: T,
   tenantId: string,
 ): SQL => eq(table.tenantId, tenantId);
 
-export const tenantAnd = <T extends { tenantId: AnyPgColumn }>(
+export const tenantAnd = <T extends { tenantId: AnyMsSqlColumn }>(
   table: T,
   tenantId: string,
   ...conditions: (SQL | undefined)[]

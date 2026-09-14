@@ -1,36 +1,40 @@
-import { pgTable, text, timestamp, uuid, boolean, pgEnum, index } from 'drizzle-orm/pg-core';
+import {
+  mssqlTable,
+  uniqueidentifier,
+  nvarchar,
+  varchar,
+  bit,
+  datetime2,
+  sql as sqlTag,
+  index,
+  uniqueIndex,
+} from 'drizzle-orm/mssql-core';
 import { tenants } from './tenants';
 
 /**
- * User role enum.
- *
- * - `admin`: Tenant üzerinde tam yetki (kullanıcı yönetimi, ayarlar,
- *   tüm CRUD). İlk kayıtta register olan kişi admin olur.
- * - `member`: Ürün/müşteri/katalog CRUD yapabilir, tenant ayarlarına
- *   ve kullanıcı yönetimine dokunamaz.
- *
- * İleride `viewer` (read-only) eklenebilir — şimdilik 2 seviye yeterli.
+ * User role — MSSQL'de enum yok. varchar(20) + app-level validation
+ * (zod schema) ile kontrol edilir. Drizzle MSSQL enum oluşturmuyor.
  */
-export const userRole = pgEnum('user_role', ['admin', 'member']);
+export type UserRole = 'admin' | 'member';
 
-export const users = pgTable(
+export const users = mssqlTable(
   'users',
   {
-    id: uuid('id').defaultRandom().primaryKey(),
-    tenantId: uuid('tenant_id')
+    id: uniqueidentifier('id').default(sqlTag`newid()`).primaryKey(),
+    tenantId: uniqueidentifier('tenant_id')
       .notNull()
       .references(() => tenants.id, { onDelete: 'cascade' }),
-    email: text('email').notNull().unique(),
-    passwordHash: text('password_hash').notNull(),
-    name: text('name').notNull(),
-    role: userRole('role').notNull().default('member'),
-    isActive: boolean('is_active').notNull().default(true),
-    lastLoginAt: timestamp('last_login_at', { withTimezone: true }),
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+    email: varchar('email', { length: 255 }).notNull(),
+    passwordHash: nvarchar('password_hash', { length: 255 }).notNull(),
+    name: nvarchar('name', { length: 255 }).notNull(),
+    role: varchar('role', { length: 20 }).notNull().default('member'),
+    isActive: bit('is_active', { mode: 'boolean' }).notNull().default(true),
+    lastLoginAt: datetime2('last_login_at'),
+    createdAt: datetime2('created_at').default(sqlTag`getdate()`).notNull(),
+    updatedAt: datetime2('updated_at').default(sqlTag`getdate()`).notNull(),
   },
   (t) => ({
-    emailIdx: index('users_email_idx').on(t.email),
+    emailUnique: uniqueIndex('users_email_unique').on(t.email),
     tenantIdx: index('users_tenant_idx').on(t.tenantId),
   }),
 );

@@ -138,7 +138,8 @@ export const listCatalogs = async (
   const conditions: (SQL | undefined)[] = [withTenant(catalogs, tenantId)];
   if (options.status) conditions.push(eq(catalogs.status, options.status));
   if (options.search) {
-    conditions.push(sql`(${catalogs.name} ILIKE ${`%${options.search}%`} OR ${catalogs.description} ILIKE ${`%${options.search}%`})`);
+    // MSSQL collation'a bağlı olmamak için LOWER() ile sarmaladık (DB-agnostic, MSSEL + PG çalışır)
+    conditions.push(sql`(LOWER(${catalogs.name}) LIKE ${`%${options.search.toLowerCase()}%`} OR LOWER(${catalogs.description}) LIKE ${`%${options.search.toLowerCase()}%`})`);
   }
 
   const rows = await db
@@ -153,13 +154,13 @@ export const listCatalogs = async (
   const customerCounts = new Map<string, number>();
   if (ids.length > 0) {
     const itemRows = await db
-      .select({ catalogId: catalogItems.catalogId, count: sql<number>`count(*)::int` })
+      .select({ catalogId: catalogItems.catalogId, count: sql<number>`count(*)` })
       .from(catalogItems)
       .where(inArray(catalogItems.catalogId, ids))
       .groupBy(catalogItems.catalogId);
     for (const r of itemRows) itemCounts.set(r.catalogId, Number(r.count));
     const custRows = await db
-      .select({ catalogId: catalogCustomers.catalogId, count: sql<number>`count(*)::int` })
+      .select({ catalogId: catalogCustomers.catalogId, count: sql<number>`count(*)` })
       .from(catalogCustomers)
       .where(inArray(catalogCustomers.catalogId, ids))
       .groupBy(catalogCustomers.catalogId);
@@ -347,11 +348,11 @@ export const updateCatalog = async (
     .where(and(eq(catalogs.id, id), withTenant(catalogs, tenantId)));
 
   const [itemCountRow] = await db
-    .select({ count: sql<number>`count(*)::int` })
+    .select({ count: sql<number>`count(*)` })
     .from(catalogItems)
     .where(eq(catalogItems.catalogId, id));
   const [customerCountRow] = await db
-    .select({ count: sql<number>`count(*)::int` })
+    .select({ count: sql<number>`count(*)` })
     .from(catalogCustomers)
     .where(eq(catalogCustomers.catalogId, id));
   const [updated] = await db
@@ -572,11 +573,11 @@ export const filterProductsForCatalog = async (
     eq(products.isActive, true),
   ];
   if (options.search) {
-    const term = `%${options.search}%`;
-    conditions.push(sql`(${products.name} ILIKE ${term} OR ${products.sku} ILIKE ${term})`);
+    const term = `%${options.search.toLowerCase()}%`;
+    conditions.push(sql`(LOWER(${products.name}) LIKE ${term} OR LOWER(${products.sku}) LIKE ${term})`);
   }
   if (options.categoryId) conditions.push(eq(products.categoryId, options.categoryId));
-  if (options.brand) conditions.push(sql`${products.brand} ILIKE ${`%${options.brand}%`}`);
+  if (options.brand) conditions.push(sql`LOWER(${products.brand}) LIKE ${`%${options.brand.toLowerCase()}%`}`);
   if (options.priceMin !== undefined) conditions.push(gte(products.price, String(options.priceMin)));
   if (options.priceMax !== undefined) conditions.push(lte(products.price, String(options.priceMax)));
 

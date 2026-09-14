@@ -18,8 +18,12 @@ const envSchema = z.object({
 
   DATABASE_URL: z
     .string()
-    .url()
-    .default('postgresql://postgres:postgres@localhost:5432/digicatalog'),
+    .min(1)
+    .refine(
+      (s) => s.startsWith('mssql://') || s.startsWith('sqlserver://'),
+      'DATABASE_URL must start with mssql:// or sqlserver://',
+    )
+    .default('mssql://sa:Password123@localhost:1433/DijiCatalog?encrypt=false&trustServerCertificate=true'),
 
   JWT_SECRET: z.string().min(16, 'JWT_SECRET must be at least 16 characters'),
   JWT_ACCESS_EXPIRES_IN: z.string().default('15m'),

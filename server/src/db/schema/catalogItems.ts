@@ -1,13 +1,14 @@
 import {
-  pgTable,
-  text,
-  timestamp,
-  uuid,
-  integer,
-  numeric,
+  mssqlTable,
+  uniqueidentifier,
+  nvarchar,
+  int,
+  decimal,
+  datetime2,
+  sql as sqlTag,
   index,
-  unique,
-} from 'drizzle-orm/pg-core';
+  uniqueIndex,
+} from 'drizzle-orm/mssql-core';
 import { catalogs } from './catalogs';
 import { products } from './products';
 
@@ -21,28 +22,28 @@ import { products } from './products';
  * Opsiyonel override'lar:
  * - customPrice: NULL ise urun.price kullanilir, dolu ise override
  * - customNotes: NULL ise urun.notes kullanilir
- * Boylece ayni urun farkli kataloglarda farkli fiyatla gosterilebilir
- * (indirim, ozel teklif vs.)
  */
-export const catalogItems = pgTable(
+export const catalogItems = mssqlTable(
   'catalog_items',
   {
-    id: uuid('id').defaultRandom().primaryKey(),
-    catalogId: uuid('catalog_id')
+    id: uniqueidentifier('id').default(sqlTag`newid()`).primaryKey(),
+    catalogId: uniqueidentifier('catalog_id')
       .notNull()
       .references(() => catalogs.id, { onDelete: 'cascade' }),
-    productId: uuid('product_id')
+    productId: uniqueidentifier('product_id')
       .notNull()
       .references(() => products.id, { onDelete: 'cascade' }),
-    sortOrder: integer('sort_order').notNull().default(0),
-    customPrice: numeric('custom_price', { precision: 12, scale: 2 }),
-    customNotes: text('custom_notes'),
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    sortOrder: int('sort_order').notNull().default(0),
+    customPrice: decimal('custom_price', { precision: 12, scale: 2 }),
+    customNotes: nvarchar('custom_notes', { length: 'max' }),
+    createdAt: datetime2('created_at').default(sqlTag`getdate()`).notNull(),
   },
   (t) => ({
     catalogIdx: index('catalog_items_catalog_idx').on(t.catalogId),
     productIdx: index('catalog_items_product_idx').on(t.productId),
-    catalogProductUnique: unique('catalog_items_catalog_product_unique').on(t.catalogId, t.productId),
+    catalogProductUnique: uniqueIndex(
+      'catalog_items_catalog_product_unique',
+    ).on(t.catalogId, t.productId),
   }),
 );
 

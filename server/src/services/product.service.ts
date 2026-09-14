@@ -169,7 +169,7 @@ export const listProducts = async (
 
   // === Total count ===
   const [{ count }] = await db
-    .select({ count: sql<number>`count(*)::int` })
+    .select({ count: sql<number>`count(*)` })
     .from(products)
     .where(tenantAnd(products, tenantId, ...conditions));
 

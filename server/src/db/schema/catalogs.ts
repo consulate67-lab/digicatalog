@@ -1,42 +1,38 @@
 import {
-  pgTable,
-  text,
-  timestamp,
-  uuid,
+  mssqlTable,
+  uniqueidentifier,
+  nvarchar,
+  varchar,
+  datetime2,
+  sql as sqlTag,
   index,
-  pgEnum,
-} from 'drizzle-orm/pg-core';
+} from 'drizzle-orm/mssql-core';
 import { tenants } from './tenants';
 import { users } from './users';
 
 /**
- * Catalog status enum.
- *
+ * Catalog status — MSSQL'de enum yok, varchar(20) + app-level validation.
  * - draft: hazirlaniyor, viewer'da gozukmez
  * - active: yayinda, viewer linki erisebilir
  * - archived: pasif, viewer'da gozukmez ama DB'de tutulur
  */
-export const catalogStatus = pgEnum('catalog_status', ['draft', 'active', 'archived']);
+export type CatalogStatus = 'draft' | 'active' | 'archived';
 
-/**
- * Catalogs tablosu — kiracının olusturdugu urun katalogu.
- *
- * - createdBy: katalogu olusturan user (audit + filtreleme)
- * - status: draft/active/archived
- */
-export const catalogs = pgTable(
+export const catalogs = mssqlTable(
   'catalogs',
   {
-    id: uuid('id').defaultRandom().primaryKey(),
-    tenantId: uuid('tenant_id')
+    id: uniqueidentifier('id').default(sqlTag`newid()`).primaryKey(),
+    tenantId: uniqueidentifier('tenant_id')
       .notNull()
       .references(() => tenants.id, { onDelete: 'cascade' }),
-    name: text('name').notNull(),
-    description: text('description'),
-    status: catalogStatus('status').notNull().default('draft'),
-    createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+    name: nvarchar('name', { length: 255 }).notNull(),
+    description: nvarchar('description', { length: 'max' }),
+    status: varchar('status', { length: 20 }).notNull().default('draft'),
+    createdBy: uniqueidentifier('created_by').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    createdAt: datetime2('created_at').default(sqlTag`getdate()`).notNull(),
+    updatedAt: datetime2('updated_at').default(sqlTag`getdate()`).notNull(),
   },
   (t) => ({
     tenantIdx: index('catalogs_tenant_idx').on(t.tenantId),

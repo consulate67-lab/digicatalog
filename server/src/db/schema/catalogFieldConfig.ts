@@ -1,41 +1,38 @@
 import {
-  pgTable,
-  text,
-  uuid,
-  integer,
-  boolean,
+  mssqlTable,
+  uniqueidentifier,
+  varchar,
+  int,
+  bit,
   index,
-  unique,
-} from 'drizzle-orm/pg-core';
+  uniqueIndex,
+} from 'drizzle-orm/mssql-core';
 import { catalogs } from './catalogs';
 
 /**
  * catalog_field_config — katalogda hangi alanlar viewer'da görünsün.
  *
- * Kullanıcı gereksinimi 10: "Katalogda gösterilecek alanlar" — admin
- * catalog oluştururken/duzenlerken her alan icin visible toggle.
- *
  * field_name izinli degerler:
  *   'sku', 'name', 'description', 'price', 'currency', 'category',
  *   'brand', 'unit', 'notes', 'images'
- *
- * Katalog olusturuldugunda default: tum alanlar visible=true.
- * Sort order ile viewer'daki alan sirasi belirlenir.
  */
-export const catalogFieldConfig = pgTable(
+export const catalogFieldConfig = mssqlTable(
   'catalog_field_config',
   {
-    id: uuid('id').defaultRandom().primaryKey(),
-    catalogId: uuid('catalog_id')
+    id: uniqueidentifier('id').default(sqlTag`newid()`).primaryKey(),
+    catalogId: uniqueidentifier('catalog_id')
       .notNull()
       .references(() => catalogs.id, { onDelete: 'cascade' }),
-    fieldName: text('field_name').notNull(),
-    isVisible: boolean('is_visible').notNull().default(true),
-    sortOrder: integer('sort_order').notNull().default(0),
+    fieldName: varchar('field_name', { length: 50 }).notNull(),
+    isVisible: bit('is_visible', { mode: 'boolean' }).notNull().default(true),
+    sortOrder: int('sort_order').notNull().default(0),
   },
   (t) => ({
     catalogIdx: index('catalog_field_config_catalog_idx').on(t.catalogId),
-    catalogFieldUnique: unique('catalog_field_config_unique').on(t.catalogId, t.fieldName),
+    catalogFieldUnique: uniqueIndex('catalog_field_config_unique').on(
+      t.catalogId,
+      t.fieldName,
+    ),
   }),
 );
 

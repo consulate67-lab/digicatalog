@@ -1,49 +1,50 @@
 import {
-  pgTable,
-  text,
-  timestamp,
-  uuid,
-  integer,
-  boolean,
+  mssqlTable,
+  uniqueidentifier,
+  nvarchar,
+  varchar,
+  int,
+  bit,
+  datetime2,
+  sql as sqlTag,
   index,
-  unique,
-  type AnyPgColumn,
-} from 'drizzle-orm/pg-core';
+  uniqueIndex,
+  type AnyMsSqlColumn,
+} from 'drizzle-orm/mssql-core';
 import { tenants } from './tenants';
 
 /**
  * Categories — tenant-scoped, self-referencing tree.
  *
  * Hiyerarşik kategori yapısı (örn. Elektronik > Bilgisayar > Laptop).
- * `parentId` null ise root kategori. Drizzle'da self-ref için
- * AnyPgColumn type assertion gerekiyor.
- *
- * - `slug`: kategori URL'si (örn. "elektronik-bilgisayar")
- *   tenant_id + slug composite unique
- * - `sortOrder`: aynı parent altında sıralama (küçük = önde)
- * - `isActive`: false ise listelerde gizli, mevcut ürünler etkilenmez
+ * `parentId` null ise root kategori. Drizzle MSSQL'de self-ref için
+ * AnyMsSqlColumn type assertion gerekiyor.
  */
-export const categories = pgTable(
+export const categories = mssqlTable(
   'categories',
   {
-    id: uuid('id').defaultRandom().primaryKey(),
-    tenantId: uuid('tenant_id')
+    id: uniqueidentifier('id').default(sqlTag`newid()`).primaryKey(),
+    tenantId: uniqueidentifier('tenant_id')
       .notNull()
       .references(() => tenants.id, { onDelete: 'cascade' }),
-    parentId: uuid('parent_id').references((): AnyPgColumn => categories.id, {
-      onDelete: 'cascade',
-    }),
-    name: text('name').notNull(),
-    slug: text('slug').notNull(),
-    sortOrder: integer('sort_order').notNull().default(0),
-    isActive: boolean('is_active').notNull().default(true),
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+    parentId: uniqueidentifier('parent_id').references(
+      (): AnyMsSqlColumn => categories.id,
+      { onDelete: 'cascade' },
+    ),
+    name: nvarchar('name', { length: 255 }).notNull(),
+    slug: varchar('slug', { length: 100 }).notNull(),
+    sortOrder: int('sort_order').notNull().default(0),
+    isActive: bit('is_active', { mode: 'boolean' }).notNull().default(true),
+    createdAt: datetime2('created_at').default(sqlTag`getdate()`).notNull(),
+    updatedAt: datetime2('updated_at').default(sqlTag`getdate()`).notNull(),
   },
   (t) => ({
     tenantIdx: index('categories_tenant_idx').on(t.tenantId),
     parentIdx: index('categories_parent_idx').on(t.parentId),
-    tenantSlugUnique: unique('categories_tenant_slug_unique').on(t.tenantId, t.slug),
+    tenantSlugUnique: uniqueIndex('categories_tenant_slug_unique').on(
+      t.tenantId,
+      t.slug,
+    ),
   }),
 );
 

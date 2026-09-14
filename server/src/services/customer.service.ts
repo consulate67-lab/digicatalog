@@ -104,7 +104,7 @@ export const listCustomers = async (
   const orderFn = sortOrder === 'asc' ? asc : desc;
 
   const [{ count }] = await db
-    .select({ count: sql<number>`count(*)::int` })
+    .select({ count: sql<number>`count(*)` })
     .from(customers)
     .where(tenantAnd(customers, tenantId, ...conditions));
 

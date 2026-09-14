@@ -21,8 +21,8 @@
 
 import 'dotenv/config';
 import bcrypt from 'bcryptjs';
-import { Pool } from 'pg';
-import { drizzle } from 'drizzle-orm/node-postgres';
+import sql from 'mssql';
+import { drizzle } from 'drizzle-orm/node-mssql';
 import { eq } from 'drizzle-orm';
 import * as schema from '../src/db/schema';
 import { logger } from '../src/utils/logger';
@@ -33,7 +33,24 @@ if (!DATABASE_URL) {
   process.exit(1);
 }
 
-const pool = new Pool({ connectionString: DATABASE_URL, ssl: { rejectUnauthorized: false } });
+// mssql://user:pass@host:port/db?encrypt=false&trustServerCertificate=true
+const u = new URL(DATABASE_URL);
+const pool = new sql.ConnectionPool({
+  user: decodeURIComponent(u.username),
+  password: decodeURIComponent(u.password),
+  server: u.hostname,
+  port: u.port ? parseInt(u.port, 10) : 1433,
+  database: u.pathname.replace(/^\/+/, '') || 'DijiCatalog',
+  options: {
+    encrypt: u.searchParams.get('encrypt') === 'true',
+    trustServerCertificate: u.searchParams.get('trustServerCertificate') !== 'false',
+    enableArithAbort: true,
+  },
+  connectionTimeout: 15_000,
+  requestTimeout: 60_000,
+  pool: { max: 5, min: 0, idleTimeoutMillis: 30_000 },
+});
+
 const db = drizzle(pool, { schema });
 
 const DEMO_TENANT = {
@@ -314,11 +331,11 @@ const main = async (): Promise<void> => {
     'Giriş bilgileri',
   );
 
-  await pool.end();
+  await pool.close();
 };
 
 main().catch((err) => {
   console.error('❌ Seed hatası:', err);
-  pool.end();
+  pool.close().catch(() => undefined);
   process.exit(1);
 });

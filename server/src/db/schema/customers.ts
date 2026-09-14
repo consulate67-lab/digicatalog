@@ -1,67 +1,52 @@
 import {
-  pgTable,
-  text,
-  timestamp,
-  uuid,
-  boolean,
+  mssqlTable,
+  uniqueidentifier,
+  nvarchar,
+  varchar,
+  bit,
+  datetime2,
+  sql as sqlTag,
   index,
-  pgEnum,
-} from 'drizzle-orm/pg-core';
+} from 'drizzle-orm/mssql-core';
 import { tenants } from './tenants';
 
 /**
- * Customer source enum.
- *
+ * Customer source — MSSQL'de enum yok, varchar(20) + app-level validation.
  * - `manual`: UI'dan elle eklendi
  * - `excel`:  Toplu Excel import ile eklendi
  * - `erp`:    Faz 4'te ERP'den senkronize edildi
- *
- * `erpCustomerId` ile birlikte ERP'den gelen kayıtların güncellenmesi
- * (sync) veya duplicate oluşması önlenir (unique index tenantId +
- * erpCustomerId).
  */
-export const customerSource = pgEnum('customer_source', ['manual', 'excel', 'erp']);
+export type CustomerSource = 'manual' | 'excel' | 'erp';
 
-/**
- * Customers tablosu. Katalog oluştururken (Faz 5) bu listeden
- * çoklu müşteri seçilecek.
- *
- * Alanlar:
- * - name (zorunlu): firma adı
- * - contactName: ilgili kişi (satış temsilcisi vs.)
- * - email, phone, address: iletişim
- * - taxNumber, taxOffice: Türkiye için vergi bilgileri (fatura)
- * - erpCustomerId: ERP'den gelen ID (Faz 4 senkronizasyon için)
- * - source: nasıl eklendiği (manual/excel/erp)
- * - notes: serbest not (ziyaret sıklığı, özel istekler, vs.)
- * - isActive: katalogda gösterilsin mi (pasif = listeden gizli)
- */
-export const customers = pgTable(
+export const customers = mssqlTable(
   'customers',
   {
-    id: uuid('id').defaultRandom().primaryKey(),
-    tenantId: uuid('tenant_id')
+    id: uniqueidentifier('id').default(sqlTag`newid()`).primaryKey(),
+    tenantId: uniqueidentifier('tenant_id')
       .notNull()
       .references(() => tenants.id, { onDelete: 'cascade' }),
-    name: text('name').notNull(),
-    contactName: text('contact_name'),
-    email: text('email'),
-    phone: text('phone'),
-    address: text('address'),
-    taxNumber: text('tax_number'),
-    taxOffice: text('tax_office'),
-    erpCustomerId: text('erp_customer_id'),
-    source: customerSource('source').notNull().default('manual'),
-    notes: text('notes'),
-    isActive: boolean('is_active').notNull().default(true),
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+    name: nvarchar('name', { length: 255 }).notNull(),
+    contactName: nvarchar('contact_name', { length: 255 }),
+    email: varchar('email', { length: 255 }),
+    phone: varchar('phone', { length: 50 }),
+    address: nvarchar('address', { length: 500 }),
+    taxNumber: varchar('tax_number', { length: 50 }),
+    taxOffice: nvarchar('tax_office', { length: 255 }),
+    erpCustomerId: varchar('erp_customer_id', { length: 100 }),
+    source: varchar('source', { length: 20 }).notNull().default('manual'),
+    notes: nvarchar('notes', { length: 'max' }),
+    isActive: bit('is_active', { mode: 'boolean' }).notNull().default(true),
+    createdAt: datetime2('created_at').default(sqlTag`getdate()`).notNull(),
+    updatedAt: datetime2('updated_at').default(sqlTag`getdate()`).notNull(),
   },
   (t) => ({
     tenantIdx: index('customers_tenant_idx').on(t.tenantId),
     emailIdx: index('customers_email_idx').on(t.email),
     // ERP senkronizasyonu için: aynı ERP ID ile tekrar insert'i önler
-    tenantErpCustomerIdx: index('customers_tenant_erp_idx').on(t.tenantId, t.erpCustomerId),
+    tenantErpCustomerIdx: index('customers_tenant_erp_idx').on(
+      t.tenantId,
+      t.erpCustomerId,
+    ),
   }),
 );
 

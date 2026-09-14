@@ -1,13 +1,24 @@
 /**
- * Drizzle schema registry.
+ * Drizzle schema registry (MSSQL dialect).
  *
  * Her domain için ayrı dosya: src/db/schema/<table>.ts
  * Buradan re-export edilir → drizzle.config.ts ve diğer kullanıcılar
  * tek yerden import eder.
  *
- * Eklenen tablolar:
- * - tenants (Faz 1) — multi-tenant kök tablosu
- * - users (Faz 1) — kullanıcılar, tenant'a bağlı
+ * Tablolar:
+ * - tenants — multi-tenant kök tablosu
+ * - users — kullanıcılar, tenant'a bağlı
+ * - categories — tenant-scoped, self-referencing tree
+ * - products — domain'in ana tablosu
+ * - productImages — ürün görselleri (base64)
+ * - customers — müşteri/cari kartları
+ * - catalogs — kataloglar
+ * - catalogItems — katalogdaki ürünler
+ * - catalogCustomers — katalog-müşteri ataması
+ * - catalogFieldConfig — katalogda görünecek alanlar
+ *
+ * MSSQL'e geçiş: önceki PG dialect şemaları .trash-2026-09-15-schema-pg/
+ * altında yedekli.
  */
 
 export * from './tenants';
