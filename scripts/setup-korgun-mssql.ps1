@@ -87,9 +87,13 @@ if (Test-Path $createDbScript) {
 Hr
 Log "ADIM 2/7: Repo klonlaniyor..."
 if (Test-Path $AppDir) {
-    Warn "$AppDir zaten var, guncelleniyor..."
+    Warn "$AppDir zaten var, zorla senkronize ediliyor (reset --hard)..."
     Set-Location $AppDir
-    git pull origin $GitHubBranch 2>&1 | Out-String | Write-Host
+    git fetch origin 2>&1 | Out-String | Write-Host
+    # Local'de conflict olmamasi icin zorla remote'a senkronla
+    # (Mevcut kurulum verileri $AppDir\logs ve $AppDir\server\.env korunur)
+    git reset --hard "origin/$GitHubBranch" 2>&1 | Out-String | Write-Host
+    git clean -fd 2>&1 | Out-String | Write-Host
 } else {
     git clone --branch $GitHubBranch "https://github.com/$GitHubRepo.git" $AppDir
     Set-Location $AppDir
