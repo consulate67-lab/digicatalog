@@ -26,7 +26,7 @@ param(
     [string]$GitHubBranch = 'main'
 )
 
-$ErrorActionPreference = 'Stop'
+$ErrorActionPreference = 'Continue'
 
 # === Renkler ===
 function Log([string]$msg)  { Write-Host "[+] $msg" -ForegroundColor Green }
