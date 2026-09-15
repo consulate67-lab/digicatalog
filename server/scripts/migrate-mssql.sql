@@ -60,12 +60,12 @@ IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'categories_tenant_idx' AN
   CREATE INDEX categories_tenant_idx ON categories(tenant_id);
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'categories_parent_idx' AND object_id = OBJECT_ID('categories'))
   CREATE INDEX categories_parent_idx ON categories(parent_id);
--- Self-referencing FK (parent_id) CREATE TABLE sirasinda MSSEL'de sikinti cikarir (MSSQL No 1750);
--- tablo olustuktan sonra ALTER TABLE ile ekliyoruz.
--- ON DELETE CASCADE yerine SET NULL kullanildi (cycle'i kirmak icin:
--- parent kategori silinince child kategoriler kalir ama parent_id'siz olur).
-IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'fk_categories_parent')
-  ALTER TABLE categories ADD CONSTRAINT fk_categories_parent FOREIGN KEY (parent_id) REFERENCES categories(id) ON DELETE SET NULL;
+-- Self-referencing FK (parent_id) MSSEL'de sikinti cikarir (MSSQL No 1750:
+-- 'Could not create constraint or index. See previous errors.').
+-- Cozum: constraint eklemiyoruz; parent_id kolonu kalir ama FK yok.
+-- Drizzle ORM runtime'da referansi yine gorur (mssql-core metadata).
+-- Uygulama katmaninda (categories.service.ts) parent varlik kontrolu yapilir.
+-- Alternatif: trigger ile cascade simule edilebilir (sonra eklenebilir).
 
 -- === products ===
 IF OBJECT_ID('products', 'U') IS NULL
