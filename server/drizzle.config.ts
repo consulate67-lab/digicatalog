@@ -1,29 +1,21 @@
-import { defineConfig } from 'drizzle-kit';
-import dotenv from 'dotenv';
-
-dotenv.config();
-
 /**
- * Drizzle Kit konfigürasyonu (MSSQL dialect).
+ * Drizzle Kit config (placeholder).
  *
- * Komutlar:
- *   npm run db:generate  - Schema'dan SQL migration üretir (DB gerektirmez)
- *   npm run db:push      - Schema'yı doğrudan DB'ye uygular (dev only)
- *   npm run db:migrate   - Migration'ı çalıştırır
- *   npm run db:studio    - Local DB GUI
+ * Drizzle Kit henuz mssql dialect'i desteklemiyor, bu yuzden
+ * migration scripts/migrate-mssql.sql ile manuel uygulaniyor.
  *
- * DATABASE_URL formatı: mssql://user:password@host:port/database?encrypt=...
+ * Drizzle ORM runtime'da (drizzle-orm/node-mssql) TypeScript
+ * schema'sini kullaniyor; ayri bir config dosyasi gerekmez.
  *
- * Faz 1'den itibaren domain schema dosyaları src/db/schema/ altında,
- * src/db/schema/index.ts hepsini re-export ediyor.
+ * Bu dosya ileride Drizzle Kit mssel destegi eklediginde
+ * tekrar aktif edilebilir.
  */
-export default defineConfig({
-  dialect: 'mssql',
+
+export default {
+  dialect: 'postgresql', // placeholder
   schema: './src/db/schema/index.ts',
   out: './drizzle',
   dbCredentials: {
-    url: process.env.DATABASE_URL || 'mssql://sa:Password123@localhost:1433/DijiCatalog?encrypt=false&trustServerCertificate=true',
+    url: 'mssql://localhost/DijiCatalog',
   },
-  verbose: true,
-  strict: true,
-});
+};

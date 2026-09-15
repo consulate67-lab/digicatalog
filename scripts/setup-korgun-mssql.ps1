@@ -99,10 +99,15 @@ if (Test-Path $AppDir) {
 Hr
 Log "ADIM 2/7: npm install + build..."
 Set-Location $AppDir
-npm install --include=dev 2>&1 | Select-Object -Last 3 | Write-Host
+npm install --include=dev 2>&1 | Select-Object -Last 5 | Write-Host
 Log "TypeScript build..."
 Set-Location "$AppDir\server"
-npm run build 2>&1 | Select-Object -Last 3 | Write-Host
+$buildOutput = npm run build 2>&1 | Out-String
+Write-Host $buildOutput
+if ($LASTEXITCODE -ne 0) {
+    Err "TypeScript build basarisiz (exit=$LASTEXITCODE). Yukaridaki hata mesajini kontrol et"
+}
+Log "Build basarili"
 
 # === ADIM 3: MSSQL DB oluştur (node_modules hazır olduktan sonra) ===
 Hr
@@ -165,23 +170,30 @@ $envContent | Out-File -FilePath $envPath -Encoding UTF8 -NoNewline
 icacls $envPath /inheritance:r /grant:r "$env:USERNAME:(R)" | Out-Null
 Log "server/.env yazildi"
 
-# === ADIM 5: Drizzle push (schema olustur) ===
+# === ADIM 5: MSSQL schema migration (manuel SQL — Drizzle Kit henuz MSSEL desteklemiyor) ===
 Hr
-Log "ADIM 5/7: Drizzle schema push..."
+Log "ADIM 5/7: MSSQL schema migration..."
 Set-Location "$AppDir\server"
-# Yedek olarak olusturulmus .trash-2026-09-15/drizzle-pg/ migration dosyalari silinmeli
-if (Test-Path drizzle) {
-    Warn "drizzle/ klasoru mevcut, icindekiler silinip yenisi olusturulacak"
-    Get-ChildItem drizzle -ErrorAction SilentlyContinue | ForEach-Object {
-        # .gitkeep gibi meta dosyalari tutulabilir
+$migrationScript = Join-Path $AppDir 'server\scripts\apply-migration.js'
+if (Test-Path $migrationScript) {
+    try {
+        & node $migrationScript `
+            --server $MssqlServer `
+            --port $MssqlPort `
+            --instance $MssqlInstance `
+            --user $MssqlUser `
+            --password $MssqlPassword `
+            --database $DbName 2>&1 | Select-Object -Last 20 | Write-Host
+        if ($LASTEXITCODE -ne 0) {
+            Err "MSSQL migration basarisiz. Manuel kontrol: server dizininde 'node scripts/apply-migration.js' calistir"
+        }
+    } catch {
+        Err "apply-migration.js calistirilamadi: $_"
     }
+    Log "Tablo semalari MSSQL'de olusturuldu"
+} else {
+    Err "apply-migration.js bulunamadi"
 }
-Log "drizzle-kit push calistiriliyor (DB sema olusturma)..."
-npx drizzle-kit push --force 2>&1 | Select-Object -Last 8 | Write-Host
-if ($LASTEXITCODE -ne 0) {
-    Err "drizzle-kit push basarisiz. Manuel kontrol: server dizininde 'npx drizzle-kit push' calistir"
-}
-Log "Tablo semalari MSSQL'de olusturuldu"
 
 # === ADIM 6: Seed ===
 Hr
