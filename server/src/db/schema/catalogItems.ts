@@ -1,11 +1,11 @@
-import {
+﻿import {
   mssqlTable,
   uniqueidentifier,
   nvarchar,
   int,
   decimal,
   datetime2,
-  sql as sqlTag,
+  sql,
   index,
   uniqueIndex,
 } from 'drizzle-orm/mssql-core';
@@ -13,7 +13,7 @@ import { catalogs } from './catalogs';
 import { products } from './products';
 
 /**
- * catalog_items — katalogdaki ürünler.
+ * catalog_items â€” katalogdaki Ã¼rÃ¼nler.
  *
  * Her urun bir katalogda sadece bir kez olabilir (unique constraint).
  * ON DELETE CASCADE: katalog silinince urunleri de gider, urun
@@ -26,7 +26,7 @@ import { products } from './products';
 export const catalogItems = mssqlTable(
   'catalog_items',
   {
-    id: uniqueidentifier('id').default(sqlTag`newid()`).primaryKey(),
+    id: uniqueidentifier('id').default(sql`newid()`).primaryKey(),
     catalogId: uniqueidentifier('catalog_id')
       .notNull()
       .references(() => catalogs.id, { onDelete: 'cascade' }),
@@ -36,7 +36,7 @@ export const catalogItems = mssqlTable(
     sortOrder: int('sort_order').notNull().default(0),
     customPrice: decimal('custom_price', { precision: 12, scale: 2 }),
     customNotes: nvarchar('custom_notes', { length: 'max' }),
-    createdAt: datetime2('created_at').default(sqlTag`getdate()`).notNull(),
+    createdAt: datetime2('created_at').default(sql`getdate()`).notNull(),
   },
   (t) => ({
     catalogIdx: index('catalog_items_catalog_idx').on(t.catalogId),

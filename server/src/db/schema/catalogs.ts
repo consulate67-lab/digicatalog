@@ -1,17 +1,17 @@
-import {
+﻿import {
   mssqlTable,
   uniqueidentifier,
   nvarchar,
   varchar,
   datetime2,
-  sql as sqlTag,
+  sql,
   index,
 } from 'drizzle-orm/mssql-core';
 import { tenants } from './tenants';
 import { users } from './users';
 
 /**
- * Catalog status — MSSQL'de enum yok, varchar(20) + app-level validation.
+ * Catalog status â€” MSSQL'de enum yok, varchar(20) + app-level validation.
  * - draft: hazirlaniyor, viewer'da gozukmez
  * - active: yayinda, viewer linki erisebilir
  * - archived: pasif, viewer'da gozukmez ama DB'de tutulur
@@ -21,7 +21,7 @@ export type CatalogStatus = 'draft' | 'active' | 'archived';
 export const catalogs = mssqlTable(
   'catalogs',
   {
-    id: uniqueidentifier('id').default(sqlTag`newid()`).primaryKey(),
+    id: uniqueidentifier('id').default(sql`newid()`).primaryKey(),
     tenantId: uniqueidentifier('tenant_id')
       .notNull()
       .references(() => tenants.id, { onDelete: 'cascade' }),
@@ -31,8 +31,8 @@ export const catalogs = mssqlTable(
     createdBy: uniqueidentifier('created_by').references(() => users.id, {
       onDelete: 'set null',
     }),
-    createdAt: datetime2('created_at').default(sqlTag`getdate()`).notNull(),
-    updatedAt: datetime2('updated_at').default(sqlTag`getdate()`).notNull(),
+    createdAt: datetime2('created_at').default(sql`getdate()`).notNull(),
+    updatedAt: datetime2('updated_at').default(sql`getdate()`).notNull(),
   },
   (t) => ({
     tenantIdx: index('catalogs_tenant_idx').on(t.tenantId),

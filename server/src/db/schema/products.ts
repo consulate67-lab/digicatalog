@@ -1,4 +1,4 @@
-import {
+﻿import {
   mssqlTable,
   uniqueidentifier,
   nvarchar,
@@ -7,7 +7,7 @@ import {
   int,
   bit,
   datetime2,
-  sql as sqlTag,
+  sql,
   index,
   uniqueIndex,
 } from 'drizzle-orm/mssql-core';
@@ -15,15 +15,15 @@ import { tenants } from './tenants';
 import { categories } from './categories';
 
 /**
- * Currency — MSSQL'de enum yok, varchar(3) + app-level validation.
- * TRY default (Türkiye pazarı odaklı).
+ * Currency â€” MSSQL'de enum yok, varchar(3) + app-level validation.
+ * TRY default (TÃ¼rkiye pazarÄ± odaklÄ±).
  */
 export type Currency = 'TRY' | 'USD' | 'EUR' | 'GBP';
 
 export const products = mssqlTable(
   'products',
   {
-    id: uniqueidentifier('id').default(sqlTag`newid()`).primaryKey(),
+    id: uniqueidentifier('id').default(sql`newid()`).primaryKey(),
     tenantId: uniqueidentifier('tenant_id')
       .notNull()
       .references(() => tenants.id, { onDelete: 'cascade' }),
@@ -39,14 +39,14 @@ export const products = mssqlTable(
     brand: nvarchar('brand', { length: 255 }),
     unit: varchar('unit', { length: 50 }),
     notes: nvarchar('notes', { length: 'max' }),
-    /** MSSQL'de jsonb yok. JSON string olarak saklanır (Drizzle parse etmez). */
+    /** MSSQL'de jsonb yok. JSON string olarak saklanÄ±r (Drizzle parse etmez). */
     attributes: nvarchar('attributes', { length: 'max' })
       .$type<Record<string, unknown>>()
       .default('{}'),
     sortOrder: int('sort_order').notNull().default(0),
     isActive: bit('is_active', { mode: 'boolean' }).notNull().default(true),
-    createdAt: datetime2('created_at').default(sqlTag`getdate()`).notNull(),
-    updatedAt: datetime2('updated_at').default(sqlTag`getdate()`).notNull(),
+    createdAt: datetime2('created_at').default(sql`getdate()`).notNull(),
+    updatedAt: datetime2('updated_at').default(sql`getdate()`).notNull(),
   },
   (t) => ({
     tenantIdx: index('products_tenant_idx').on(t.tenantId),

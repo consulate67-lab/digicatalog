@@ -1,38 +1,38 @@
-import {
+﻿import {
   mssqlTable,
   uniqueidentifier,
   nvarchar,
   varchar,
   datetime2,
-  sql as sqlTag,
+  sql,
   index,
 } from 'drizzle-orm/mssql-core';
 
 /**
- * Tenants — multi-tenant SaaS'in kök tablosu.
+ * Tenants â€” multi-tenant SaaS'in kÃ¶k tablosu.
  *
- * Her kiracı (müşteri firma) bir tenant'tır. Tüm domain tabloları
+ * Her kiracÄ± (mÃ¼ÅŸteri firma) bir tenant'tÄ±r. TÃ¼m domain tablolarÄ±
  * (users, products, customers, catalogs, ...) tenant_id FK ile buraya
- * bağlanır. Row-level isolation bu sayede sağlanır.
+ * baÄŸlanÄ±r. Row-level isolation bu sayede saÄŸlanÄ±r.
  *
- * MSSQL notları:
- * - `id` uniqueidentifier (default `newid()`) — PG'deki `uuid` karşılığı
- * - `name` nvarchar(255) — Unicode metin
- * - `slug` varchar(100) — URL-safe ASCII
- * - `erpConfig` nvarchar(max) — JSON string olarak saklanır (MSSQL'de
- *   json tipi de var ama nvarchar(max) daha geniş uyumluluk)
- * - `createdAt/updatedAt` datetime2 — timezone-aware değil; UTC'de tutarız
+ * MSSQL notlarÄ±:
+ * - `id` uniqueidentifier (default `newid()`) â€” PG'deki `uuid` karÅŸÄ±lÄ±ÄŸÄ±
+ * - `name` nvarchar(255) â€” Unicode metin
+ * - `slug` varchar(100) â€” URL-safe ASCII
+ * - `erpConfig` nvarchar(max) â€” JSON string olarak saklanÄ±r (MSSQL'de
+ *   json tipi de var ama nvarchar(max) daha geniÅŸ uyumluluk)
+ * - `createdAt/updatedAt` datetime2 â€” timezone-aware deÄŸil; UTC'de tutarÄ±z
  */
 export const tenants = mssqlTable(
   'tenants',
   {
-    id: uniqueidentifier('id').default(sqlTag`newid()`).primaryKey(),
+    id: uniqueidentifier('id').default(sql`newid()`).primaryKey(),
     name: nvarchar('name', { length: 255 }).notNull(),
     slug: varchar('slug', { length: 100 }).notNull().unique(),
     erpProvider: varchar('erp_provider', { length: 50 }),
     erpConfig: nvarchar('erp_config', { length: 'max' }),
-    createdAt: datetime2('created_at').default(sqlTag`getdate()`).notNull(),
-    updatedAt: datetime2('updated_at').default(sqlTag`getdate()`).notNull(),
+    createdAt: datetime2('created_at').default(sql`getdate()`).notNull(),
+    updatedAt: datetime2('updated_at').default(sql`getdate()`).notNull(),
   },
   (t) => ({
     slugIdx: index('tenants_slug_idx').on(t.slug),

@@ -1,17 +1,17 @@
-import {
+﻿import {
   mssqlTable,
   uniqueidentifier,
   nvarchar,
   varchar,
   bit,
   datetime2,
-  sql as sqlTag,
+  sql,
   index,
 } from 'drizzle-orm/mssql-core';
 import { tenants } from './tenants';
 
 /**
- * Customer source — MSSQL'de enum yok, varchar(20) + app-level validation.
+ * Customer source â€” MSSQL'de enum yok, varchar(20) + app-level validation.
  * - `manual`: UI'dan elle eklendi
  * - `excel`:  Toplu Excel import ile eklendi
  * - `erp`:    Faz 4'te ERP'den senkronize edildi
@@ -21,7 +21,7 @@ export type CustomerSource = 'manual' | 'excel' | 'erp';
 export const customers = mssqlTable(
   'customers',
   {
-    id: uniqueidentifier('id').default(sqlTag`newid()`).primaryKey(),
+    id: uniqueidentifier('id').default(sql`newid()`).primaryKey(),
     tenantId: uniqueidentifier('tenant_id')
       .notNull()
       .references(() => tenants.id, { onDelete: 'cascade' }),
@@ -36,13 +36,13 @@ export const customers = mssqlTable(
     source: varchar('source', { length: 20 }).notNull().default('manual'),
     notes: nvarchar('notes', { length: 'max' }),
     isActive: bit('is_active', { mode: 'boolean' }).notNull().default(true),
-    createdAt: datetime2('created_at').default(sqlTag`getdate()`).notNull(),
-    updatedAt: datetime2('updated_at').default(sqlTag`getdate()`).notNull(),
+    createdAt: datetime2('created_at').default(sql`getdate()`).notNull(),
+    updatedAt: datetime2('updated_at').default(sql`getdate()`).notNull(),
   },
   (t) => ({
     tenantIdx: index('customers_tenant_idx').on(t.tenantId),
     emailIdx: index('customers_email_idx').on(t.email),
-    // ERP senkronizasyonu için: aynı ERP ID ile tekrar insert'i önler
+    // ERP senkronizasyonu iÃ§in: aynÄ± ERP ID ile tekrar insert'i Ã¶nler
     tenantErpCustomerIdx: index('customers_tenant_erp_idx').on(
       t.tenantId,
       t.erpCustomerId,

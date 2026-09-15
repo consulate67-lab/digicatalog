@@ -1,4 +1,4 @@
-import {
+﻿import {
   mssqlTable,
   uniqueidentifier,
   varchar,
@@ -10,7 +10,7 @@ import {
 import { catalogs } from './catalogs';
 
 /**
- * catalog_field_config — katalogda hangi alanlar viewer'da görünsün.
+ * catalog_field_config â€” katalogda hangi alanlar viewer'da gÃ¶rÃ¼nsÃ¼n.
  *
  * field_name izinli degerler:
  *   'sku', 'name', 'description', 'price', 'currency', 'category',
@@ -19,7 +19,7 @@ import { catalogs } from './catalogs';
 export const catalogFieldConfig = mssqlTable(
   'catalog_field_config',
   {
-    id: uniqueidentifier('id').default(sqlTag`newid()`).primaryKey(),
+    id: uniqueidentifier('id').default(sql`newid()`).primaryKey(),
     catalogId: uniqueidentifier('catalog_id')
       .notNull()
       .references(() => catalogs.id, { onDelete: 'cascade' }),
@@ -40,7 +40,7 @@ export type CatalogFieldConfig = typeof catalogFieldConfig.$inferSelect;
 export type NewCatalogFieldConfig = typeof catalogFieldConfig.$inferInsert;
 
 /**
- * İzin verilen field name'ler (validation + UI'da gösterim için)
+ * Ä°zin verilen field name'ler (validation + UI'da gÃ¶sterim iÃ§in)
  */
 export const CATALOG_FIELD_NAMES = [
   'sku',
@@ -59,13 +59,13 @@ export type CatalogFieldName = (typeof CATALOG_FIELD_NAMES)[number];
 
 export const CATALOG_FIELD_LABELS: Record<CatalogFieldName, string> = {
   sku: 'SKU',
-  name: 'Ürün Adı',
-  description: 'Açıklama',
+  name: 'ÃœrÃ¼n AdÄ±',
+  description: 'AÃ§Ä±klama',
   price: 'Fiyat',
   currency: 'Para Birimi',
   category: 'Kategori',
   brand: 'Marka',
   unit: 'Birim',
   notes: 'Notlar',
-  images: 'Görseller',
+  images: 'GÃ¶rseller',
 };

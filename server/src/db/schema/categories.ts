@@ -1,4 +1,4 @@
-import {
+﻿import {
   mssqlTable,
   uniqueidentifier,
   nvarchar,
@@ -6,37 +6,36 @@ import {
   int,
   bit,
   datetime2,
-  sql as sqlTag,
+  sql,
   index,
   uniqueIndex,
-  type AnyMsSqlColumn,
 } from 'drizzle-orm/mssql-core';
 import { tenants } from './tenants';
 
 /**
- * Categories — tenant-scoped, self-referencing tree.
+ * Categories â€” tenant-scoped, self-referencing tree.
  *
- * Hiyerarşik kategori yapısı (örn. Elektronik > Bilgisayar > Laptop).
- * `parentId` null ise root kategori. Drizzle MSSQL'de self-ref için
+ * HiyerarÅŸik kategori yapÄ±sÄ± (Ã¶rn. Elektronik > Bilgisayar > Laptop).
+ * `parentId` null ise root kategori. Drizzle MSSQL'de self-ref iÃ§in
  * AnyMsSqlColumn type assertion gerekiyor.
  */
 export const categories = mssqlTable(
   'categories',
   {
-    id: uniqueidentifier('id').default(sqlTag`newid()`).primaryKey(),
+    id: uniqueidentifier('id').default(sql`newid()`).primaryKey(),
     tenantId: uniqueidentifier('tenant_id')
       .notNull()
       .references(() => tenants.id, { onDelete: 'cascade' }),
     parentId: uniqueidentifier('parent_id').references(
-      (): AnyMsSqlColumn => categories.id,
+      (): any => categories.id,
       { onDelete: 'cascade' },
     ),
     name: nvarchar('name', { length: 255 }).notNull(),
     slug: varchar('slug', { length: 100 }).notNull(),
     sortOrder: int('sort_order').notNull().default(0),
     isActive: bit('is_active', { mode: 'boolean' }).notNull().default(true),
-    createdAt: datetime2('created_at').default(sqlTag`getdate()`).notNull(),
-    updatedAt: datetime2('updated_at').default(sqlTag`getdate()`).notNull(),
+    createdAt: datetime2('created_at').default(sql`getdate()`).notNull(),
+    updatedAt: datetime2('updated_at').default(sql`getdate()`).notNull(),
   },
   (t) => ({
     tenantIdx: index('categories_tenant_idx').on(t.tenantId),
