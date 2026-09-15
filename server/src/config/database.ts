@@ -26,7 +26,7 @@ interface ParsedDbConfig {
   trustServerCertificate: boolean;
 }
 
-const parseDatabaseUrl = (url: string): ParsedDbConfig => {
+export const parseDatabaseUrl = (url: string): ParsedDbConfig => {
   // mssql://user:password@host[:port|host\INSTANCE]/database?query
   // Node URL parser named instance iceren hostname'leri kabul etmez ('\\').
   // Manuel regex ile parcala.
