@@ -27,29 +27,40 @@ interface ParsedDbConfig {
 }
 
 const parseDatabaseUrl = (url: string): ParsedDbConfig => {
-  const u = new URL(url);
-  // URL format: mssql://user:pass@host[:port|host\INSTANCE]/database?query
-  // host kismi hem port hem named instance icerebilir
-  // mssql package semantik: server = 'host\INSTANCE' veya 'host', port sadece direct baglanti icin
-  const rawServer = u.hostname;
-  let server = rawServer;
+  // mssql://user:password@host[:port|host\INSTANCE]/database?query
+  // Node URL parser named instance iceren hostname'leri kabul etmez ('\\').
+  // Manuel regex ile parcala.
+  const m = url.match(/^mssql:\/\/([^:/?]+):([^@]+)@([^/?]+)\/([^?]+)(?:\?(.*))?$/);
+  if (!m) throw new Error(`Invalid DATABASE_URL: ${url}`);
+  const user = decodeURIComponent(m[1]);
+  const password = decodeURIComponent(m[2]);
+  const hostPart = decodeURIComponent(m[3]);
+  const database = m[4] || 'DijiCatalog';
+  const queryStr = m[5] || '';
+
+  // hostPart: 'host', 'host:port', 'host\INSTANCE', veya 'host\INSTANCE:dynamic'
+  let server = hostPart;
   let port: number | null = null;
-  // Host icinde backslash varsa (named instance) veya yoksa
-  // URL parser hostname'de backslash'i farkli isleyebilir; manuel kontrol
-  if (rawServer.includes('\\')) {
-    // Named instance — port SQL Browser tarafindan cozumlenir
-    server = rawServer;
+  if (hostPart.includes('\\')) {
+    // Named instance — port SQL Browser tarafindan cozumlenir (mssql package direkt port kullanmaz)
+    server = hostPart;
     port = null;
-  } else if (u.port) {
-    port = parseInt(u.port, 10);
+  } else {
+    const colonIdx = hostPart.lastIndexOf(':');
+    if (colonIdx > 0) {
+      server = hostPart.slice(0, colonIdx);
+      const p = parseInt(hostPart.slice(colonIdx + 1), 10);
+      if (!isNaN(p)) port = p;
+    }
   }
-  const database = u.pathname.replace(/^\/+/, '') || 'DijiCatalog';
-  const encrypt = u.searchParams.get('encrypt') === 'true';
-  const trustServerCertificate =
-    u.searchParams.get('trustServerCertificate') !== 'false';
+
+  const params = new URLSearchParams(queryStr);
+  const encrypt = params.get('encrypt') === 'true';
+  const trustServerCertificate = params.get('trustServerCertificate') !== 'false';
+
   return {
-    user: decodeURIComponent(u.username || ''),
-    password: decodeURIComponent(u.password || ''),
+    user,
+    password,
     server,
     port,
     database,
