@@ -222,9 +222,10 @@ IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'fk_users_tenant')
 IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'fk_categories_tenant')
   ALTER TABLE categories ADD CONSTRAINT fk_categories_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
 
--- Self-reference categories: SET NULL (cycle kirici)
-IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'fk_categories_parent')
-  ALTER TABLE categories ADD CONSTRAINT fk_categories_parent FOREIGN KEY (parent_id) REFERENCES categories(id) ON DELETE SET NULL;
+-- categories self-reference FK MSSEL'de sikinti cikarir (MSSQL No 1750)
+-- (CASCADE, SET NULL hepsi reddedildi). Cozum: parent_id kolonu kalir ama
+-- FK constraint yok. Uygulama katmaninda (categories.service.ts) parent
+-- varlik kontrolu yapilir. Drizzle ORM runtime'da parent_id'yi tanir.
 
 IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'fk_products_tenant')
   ALTER TABLE products ADD CONSTRAINT fk_products_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
