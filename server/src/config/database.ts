@@ -1,27 +1,26 @@
 import sql from 'mssql';
-import { drizzle } from 'drizzle-orm/node-mssql';
-import * as schema from '../db/schema';
 import { env } from './env';
 
 /**
- * MSSQL bağlantı havuzu + Drizzle ORM instance.
+ * MSSQL baglanti havuzu + getPool helper.
  *
- * - mssql.ConnectionPool: Drizzle node-mssql adapter için
- * - DATABASE_URL format: `mssql://user:password@host:port/db?encrypt=...&trustServerCertificate=...`
- *   (örn. `mssql://sa:Passw0rd@192.168.2.67:49746/DijiCatalog?encrypt=false&trustServerCertificate=true`)
- * - Drizzle MSSQL varsayılan olarak encrypt=true bekler; internal LAN
- *   bağlantılarında false + trustServerCertificate=true kullanılır.
+ * - mssql.ConnectionPool: Drizzle ORM kullanmiyoruz (drizzle-orm'de MSSEL exports yok),
+ *   tüm service'ler raw mssql ile calisiyor.
+ * - DATABASE_URL format: `mssql://user:password@host[:port]/db?encrypt=...&trustServerCertificate=...`
+ *   Named instance icin: `mssql://user:pass@host\INSTANCE/db?...` (port yok, SQL Browser)
+ *   Ornek: `mssql://sa:Passw0rd@localhost\ABKA/DijiCatalog?encrypt=false&trustServerCertificate=true`
  *
- * Kullanım:
- *   import { db, pool } from '../config/database';
- *   const rows = await db.select().from(users).where(eq(users.tenantId, tenantId));
+ * Kullanim:
+ *   import { pool, getPool } from '../config/database';
+ *   const p = await getPool();
+ *   const r = await p.request().input('id', sql.NVarChar, id).query('SELECT ...');
  */
 
 interface ParsedDbConfig {
   user: string;
   password: string;
   server: string;
-  port: number;
+  port: number | null;
   database: string;
   encrypt: boolean;
   trustServerCertificate: boolean;
@@ -29,20 +28,28 @@ interface ParsedDbConfig {
 
 const parseDatabaseUrl = (url: string): ParsedDbConfig => {
   const u = new URL(url);
-  // URL scheme "mssql:" — host port path'i farklı parse edilir
-  // URL formatı: mssql://user:pass@host:port/database?query
-  const server = u.hostname;
-  const port = u.port ? parseInt(u.port, 10) : 1433;
+  // URL format: mssql://user:pass@host[:port|host\INSTANCE]/database?query
+  // host kismi hem port hem named instance icerebilir
+  // mssql package semantik: server = 'host\INSTANCE' veya 'host', port sadece direct baglanti icin
+  const rawServer = u.hostname;
+  let server = rawServer;
+  let port: number | null = null;
+  // Host icinde backslash varsa (named instance) veya yoksa
+  // URL parser hostname'de backslash'i farkli isleyebilir; manuel kontrol
+  if (rawServer.includes('\\')) {
+    // Named instance — port SQL Browser tarafindan cozumlenir
+    server = rawServer;
+    port = null;
+  } else if (u.port) {
+    port = parseInt(u.port, 10);
+  }
   const database = u.pathname.replace(/^\/+/, '') || 'DijiCatalog';
   const encrypt = u.searchParams.get('encrypt') === 'true';
   const trustServerCertificate =
     u.searchParams.get('trustServerCertificate') !== 'false';
-  // mssql:// scheme URL'i user/pass'i doğru parse etmez; "user:password" içeriyor
-  const userInfo = u.username || '';
-  const password = u.password || '';
   return {
-    user: decodeURIComponent(userInfo),
-    password: decodeURIComponent(password),
+    user: decodeURIComponent(u.username || ''),
+    password: decodeURIComponent(u.password || ''),
     server,
     port,
     database,
@@ -53,11 +60,11 @@ const parseDatabaseUrl = (url: string): ParsedDbConfig => {
 
 const cfg = parseDatabaseUrl(env.DATABASE_URL);
 
-export const pool = new sql.ConnectionPool({
+const basePoolConfig: sql.config = {
   user: cfg.user,
   password: cfg.password,
   server: cfg.server,
-  port: cfg.port,
+  ...(cfg.port !== null ? { port: cfg.port } : {}),
   database: cfg.database,
   options: {
     encrypt: cfg.encrypt,
@@ -71,25 +78,24 @@ export const pool = new sql.ConnectionPool({
     min: 0,
     idleTimeoutMillis: 30_000,
   },
-});
+};
 
-export const db = drizzle(pool, { schema });
+export const pool = new sql.ConnectionPool(basePoolConfig);
+
+// Lazy + memoized connect
+let connecting: Promise<sql.ConnectionPool> | null = null;
+export const getPool = async (): Promise<sql.ConnectionPool> => {
+  if (pool.connected) return pool;
+  if (!connecting) {
+    connecting = pool.connect();
+  }
+  return connecting;
+};
 
 /**
- * Graceful shutdown: tüm açık bağlantıları kapat.
- * server.ts shutdown handler'dan çağrılır.
+ * Graceful shutdown: tüm acik baglantilari kapat.
+ * server.ts shutdown handler'dan cagrilir.
  */
 export const closePool = async (): Promise<void> => {
   await pool.close();
-};
-
-// Eager connection — app başlarken DB hazır mı kontrol etmek için
-// bağlantı hatası varsa fail-fast yaparız
-let connecting: Promise<void> | null = null;
-export const ensureConnected = async (): Promise<void> => {
-  if (pool.connected) return;
-  if (!connecting) {
-    connecting = pool.connect().then(() => undefined);
-  }
-  await connecting;
 };

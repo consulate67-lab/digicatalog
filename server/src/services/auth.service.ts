@@ -1,25 +1,17 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import { eq } from 'drizzle-orm';
-import { db } from '../config/database';
-import { users, tenants } from '../db/schema';
+import sql from 'mssql';
+import { getPool } from '../config/database';
 import { env } from '../config/env';
 import { HttpError } from '../middleware/errorHandler';
 import { logger } from '../utils/logger';
 
 /**
- * Auth service. İş mantığı katmanı — route handler'lar sadece
- * validation + bu servisi çağırır, SQL burada kalır.
+ * Auth service. Is mantigi katmani — route handler'lar sadece
+ * validation + bu servisi cagirir.
  *
- * JWT stratejisi:
- * - Access token: 15dk (default), kısa ömürlü, her API call'da gönderilir
- * - Refresh token: 7 gün (default), uzun ömürlü, sadece /auth/refresh'te
- * - İkisi de aynı secret ile imzalanır (production'da ayrı secret önerilir)
- *
- * Tenant izolasyonu:
- * - Register: yeni tenant + admin user aynı transaction'da oluşturulur
- * - Login: user bulunur, payload'da tenantId set edilir
- * - Tüm sonraki query'ler req.user.tenantId ile filtrelenir
+ * NOT: Drizzle ORM'den raw mssql'e gecildi. TDB (transaction) tek bir
+ * sql.Request + manual BEGIN/COMMIT ile yapiliyor (veya pool.transaction()).
  */
 
 export interface AuthPayload {
@@ -47,7 +39,7 @@ export interface PublicUser {
 
 const BCRYPT_ROUNDS = 10;
 
-// === Şifre ===
+// === Sifre ===
 
 export const hashPassword = async (password: string): Promise<string> => {
   return bcrypt.hash(password, BCRYPT_ROUNDS);
@@ -85,13 +77,6 @@ export const verifyToken = (token: string): AuthPayload => {
   }
 };
 
-// === DB helpers ===
-
-const stripPassword = <T extends { passwordHash: string }>(user: T): PublicUser => {
-  const { passwordHash: _passwordHash, ...rest } = user;
-  return rest as unknown as PublicUser;
-};
-
 // === Public API ===
 
 export interface RegisterInput {
@@ -105,67 +90,71 @@ export interface RegisterInput {
 export const register = async (
   input: RegisterInput,
 ): Promise<{ user: PublicUser; tokens: AuthTokens }> => {
-  // 1) Slug benzersizlik kontrolü
-  const existingSlug = await db
-    .select({ id: tenants.id })
-    .from(tenants)
-    .where(eq(tenants.slug, input.tenantSlug))
-    .limit(1);
-  if (existingSlug.length > 0) {
-    throw new HttpError(409, 'Bu slug zaten kullanılıyor');
+  const pool = await getPool();
+
+  // 1) Slug benzersizlik kontrolu
+  const slugCheck = await pool.request()
+    .input('slug', sql.NVarChar, input.tenantSlug)
+    .query(`SELECT id FROM tenants WHERE slug = @slug`);
+  if (slugCheck.recordset[0]) {
+    throw new HttpError(409, 'Bu slug zaten kullaniliyor');
   }
 
-  // 2) Email benzersizlik kontrolü
-  const existingEmail = await db
-    .select({ id: users.id })
-    .from(users)
-    .where(eq(users.email, input.email))
-    .limit(1);
-  if (existingEmail.length > 0) {
-    throw new HttpError(409, 'Bu email zaten kayıtlı');
+  // 2) Email benzersizlik kontrolu
+  const emailCheck = await pool.request()
+    .input('email', sql.NVarChar, input.email)
+    .query(`SELECT id FROM users WHERE email = @email`);
+  if (emailCheck.recordset[0]) {
+    throw new HttpError(409, 'Bu email zaten kayitli');
   }
 
-  // 3) Şifre hash
+  // 3) Sifre hash
   const passwordHash = await hashPassword(input.password);
 
   // 4) Tenant + admin user (transaction)
-  const result = await db.transaction(async (tx) => {
-    const [tenant] = await tx
-      .insert(tenants)
-      .values({ name: input.tenantName, slug: input.tenantSlug })
-      .returning();
+  const tx = new sql.Transaction(pool);
+  await tx.begin();
+  try {
+    const tenantResult = await tx.request()
+      .input('name', sql.NVarChar, input.tenantName)
+      .input('slug', sql.NVarChar, input.tenantSlug)
+      .query(`INSERT INTO tenants (name, slug)
+              OUTPUT INSERTED.id, INSERTED.name, INSERTED.slug, INSERTED.erp_provider, INSERTED.erp_config,
+                     INSERTED.created_at AS createdAt, INSERTED.updated_at AS updatedAt
+              VALUES (@name, @slug)`);
+    const tenant = tenantResult.recordset[0];
 
-    const [user] = await tx
-      .insert(users)
-      .values({
-        tenantId: tenant.id,
-        email: input.email,
-        passwordHash,
-        name: input.name,
-        role: 'admin', // İlk kullanıcı her zaman admin
-      })
-      .returning();
+    const userResult = await tx.request()
+      .input('tenantId', sql.UniqueIdentifier, tenant.id)
+      .input('email', sql.NVarChar, input.email)
+      .input('passwordHash', sql.NVarChar, passwordHash)
+      .input('name', sql.NVarChar, input.name)
+      .input('role', sql.NVarChar, 'admin')
+      .query(`INSERT INTO users (tenant_id, email, password_hash, name, role)
+              OUTPUT INSERTED.id, INSERTED.tenant_id AS tenantId, INSERTED.email, INSERTED.name,
+                     INSERTED.role, INSERTED.is_active AS isActive, INSERTED.last_login_at AS lastLoginAt,
+                     INSERTED.created_at AS createdAt, INSERTED.updated_at AS updatedAt
+              VALUES (@tenantId, @email, @passwordHash, @name, @role)`);
+    const user = userResult.recordset[0];
+    await tx.commit();
 
-    return { tenant, user };
-  });
+    // 5) Token uret
+    const payload: AuthPayload = {
+      userId: user.id,
+      tenantId: tenant.id,
+      role: 'admin',
+    };
+    const tokens: AuthTokens = {
+      accessToken: signAccessToken(payload),
+      refreshToken: signRefreshToken(payload),
+    };
 
-  // 5) Token üret
-  const payload: AuthPayload = {
-    userId: result.user.id,
-    tenantId: result.tenant.id,
-    role: 'admin',
-  };
-  const tokens: AuthTokens = {
-    accessToken: signAccessToken(payload),
-    refreshToken: signRefreshToken(payload),
-  };
-
-  logger.info(
-    { tenantId: result.tenant.id, userId: result.user.id, slug: result.tenant.slug },
-    'New tenant registered',
-  );
-
-  return { user: stripPassword(result.user), tokens };
+    logger.info({ tenantId: tenant.id, userId: user.id, slug: tenant.slug }, 'New tenant registered');
+    return { user, tokens };
+  } catch (err) {
+    await tx.rollback();
+    throw err;
+  }
 };
 
 export interface LoginInput {
@@ -176,37 +165,40 @@ export interface LoginInput {
 export const login = async (
   input: LoginInput,
 ): Promise<{ user: PublicUser; tokens: AuthTokens }> => {
+  const pool = await getPool();
+
   // 1) User bul
-  const [user] = await db
-    .select()
-    .from(users)
-    .where(eq(users.email, input.email))
-    .limit(1);
+  const r = await pool.request()
+    .input('email', sql.NVarChar, input.email)
+    .query(`SELECT id, tenant_id AS tenantId, email, password_hash AS passwordHash, name,
+            role, is_active AS isActive, last_login_at AS lastLoginAt,
+            created_at AS createdAt, updated_at AS updatedAt
+     FROM users WHERE email = @email`);
+  const user = r.recordset[0];
 
   if (!user) {
-    // Kullanıcı var/yok bilgisi sızdırmamak için generic mesaj
-    throw new HttpError(401, 'Email veya şifre hatalı');
+    // Kullanici var/yok bilgisi sizdirmamak icin generic mesaj
+    throw new HttpError(401, 'Email veya sifre hatali');
   }
 
-  // 2) Aktiflik kontrolü
+  // 2) Aktiflik kontrolu
   if (!user.isActive) {
-    throw new HttpError(403, 'Hesap devre dışı bırakılmış');
+    throw new HttpError(403, 'Hesap devre disi birakilmis');
   }
 
-  // 3) Şifre doğrula
+  // 3) Sifre dogrula
   const valid = await verifyPassword(input.password, user.passwordHash);
   if (!valid) {
-    throw new HttpError(401, 'Email veya şifre hatalı');
+    throw new HttpError(401, 'Email veya sifre hatali');
   }
 
-  // 4) Son giriş zamanı güncelle (fire-and-forget, ana akışı bloklamaz)
-  void db
-    .update(users)
-    .set({ lastLoginAt: new Date() })
-    .where(eq(users.id, user.id))
-    .catch((err) => logger.warn({ err, userId: user.id }, 'lastLoginAt update failed'));
+  // 4) Son giris zamani guncelle (fire-and-forget)
+  void pool.request()
+    .input('id', sql.UniqueIdentifier, user.id)
+    .query(`UPDATE users SET last_login_at = getdate() WHERE id = @id`)
+    .catch((err: unknown) => logger.warn({ err, userId: user.id }, 'lastLoginAt update failed'));
 
-  // 5) Token üret
+  // 5) Token uret
   const payload: AuthPayload = {
     userId: user.id,
     tenantId: user.tenantId,
@@ -218,26 +210,25 @@ export const login = async (
   };
 
   logger.info({ userId: user.id, tenantId: user.tenantId }, 'User logged in');
-
-  return { user: stripPassword(user), tokens };
+  return { user, tokens };
 };
 
 export const refresh = async (refreshToken: string): Promise<AuthTokens> => {
-  // 1) Refresh token doğrula
+  // 1) Refresh token dogrula
   const payload = verifyToken(refreshToken);
 
-  // 2) User hâlâ var mı ve aktif mi?
-  const [user] = await db
-    .select({ id: users.id, tenantId: users.tenantId, role: users.role, isActive: users.isActive })
-    .from(users)
-    .where(eq(users.id, payload.userId))
-    .limit(1);
+  // 2) User hala var mi ve aktif mi?
+  const pool = await getPool();
+  const r = await pool.request()
+    .input('id', sql.UniqueIdentifier, payload.userId)
+    .query(`SELECT id, tenant_id AS tenantId, role, is_active AS isActive FROM users WHERE id = @id`);
+  const user = r.recordset[0];
 
   if (!user || !user.isActive) {
-    throw new HttpError(401, 'Kullanıcı bulunamadı veya devre dışı');
+    throw new HttpError(401, 'Kullanici bulunamadi veya devre disi');
   }
 
-  // 3) Yeni token çifti üret
+  // 3) Yeni token cifti uret
   const newPayload: AuthPayload = {
     userId: user.id,
     tenantId: user.tenantId,
@@ -250,15 +241,21 @@ export const refresh = async (refreshToken: string): Promise<AuthTokens> => {
 };
 
 export const getMe = async (userId: string): Promise<{ user: PublicUser; tenant: { id: string; name: string; slug: string } }> => {
-  const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
-  if (!user) throw new HttpError(404, 'Kullanıcı bulunamadı');
+  const pool = await getPool();
+  const userR = await pool.request()
+    .input('id', sql.UniqueIdentifier, userId)
+    .query(`SELECT id, tenant_id AS tenantId, email, name, role,
+            is_active AS isActive, last_login_at AS lastLoginAt,
+            created_at AS createdAt, updated_at AS updatedAt
+     FROM users WHERE id = @id`);
+  const user = userR.recordset[0];
+  if (!user) throw new HttpError(404, 'Kullanici bulunamadi');
 
-  const [tenant] = await db
-    .select({ id: tenants.id, name: tenants.name, slug: tenants.slug })
-    .from(tenants)
-    .where(eq(tenants.id, user.tenantId))
-    .limit(1);
-  if (!tenant) throw new HttpError(404, 'Tenant bulunamadı');
+  const tenantR = await pool.request()
+    .input('id', sql.UniqueIdentifier, user.tenantId)
+    .query(`SELECT id, name, slug FROM tenants WHERE id = @id`);
+  const tenant = tenantR.recordset[0];
+  if (!tenant) throw new HttpError(404, 'Tenant bulunamadi');
 
-  return { user: stripPassword(user), tenant };
+  return { user, tenant };
 };

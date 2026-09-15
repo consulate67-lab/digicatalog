@@ -2,8 +2,14 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { authMiddleware } from '../middleware/auth';
 import * as catalogService from '../services/catalog.service';
-import { CATALOG_FIELD_NAMES } from '../db/schema/catalogFieldConfig';
 import { HttpError } from '../middleware/errorHandler';
+
+// Catalog field izinli degerler (services/catalog.service.ts'te de tanimli,
+// Drizzle schema trash'e tasindi, burada local tutuyoruz)
+const CATALOG_FIELD_NAMES = [
+  'sku', 'name', 'description', 'price', 'currency',
+  'category', 'brand', 'unit', 'notes', 'images',
+] as const;
 
 const router = Router();
 router.use(authMiddleware);

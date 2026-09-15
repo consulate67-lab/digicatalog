@@ -1,53 +1,34 @@
-import { eq, and, or, ilike, desc, asc, sql, inArray, type SQL } from 'drizzle-orm';
-import { db } from '../config/database';
-import {
-  products,
-  productImages,
-  categories,
-  type Product,
-  type ProductImage,
-  type NewProduct,
-  type NewProductImage,
-} from '../db/schema';
-import { withTenant, tenantAnd } from '../db/helpers';
+import sql from 'mssql';
+import { getPool } from '../config/database';
+import { tenantFilter } from '../db/helpers';
 import { HttpError } from '../middleware/errorHandler';
 import { logger } from '../utils/logger';
 
 /**
- * Product service. Ürün CRUD + resim yönetimi + filtreleme/arama.
+ * Product service. Urun CRUD + resim yonetimi + filtreleme/arama.
  *
- * Tüm query'ler withTenant(products, tenantId) ile izole.
- * numeric price Drizzle'dan string gelir, burada number'a çevrilir.
+ * NOT: Drizzle ORM'den raw mssql'e gecildi (drizzle-orm'de MSSEL exports yok).
+ * numeric/decimal MSSEL'den string gelir, parseFloat ile number'a cevrilir.
  */
 
 const DEFAULT_PAGE_SIZE = 20;
 const MAX_PAGE_SIZE = 100;
-const MAX_BASE64_LENGTH = 15_000_000; // ~10MB binary
-
-// === Image validation ===
+const MAX_BASE64_LENGTH = 15_000_000;
 
 const ALLOWED_IMAGE_MIMES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'] as const;
 
-const validateImage = (data: {
-  base64Data: string;
-  mimeType: string;
-  fileSize: number;
-}): void => {
+const validateImage = (data: { base64Data: string; mimeType: string; fileSize: number }): void => {
   if (!ALLOWED_IMAGE_MIMES.includes(data.mimeType as never)) {
-    throw new HttpError(400, `Desteklenmeyen resim formatı: ${data.mimeType}`);
+    throw new HttpError(400, `Desteklenmeyen resim formati: ${data.mimeType}`);
   }
   if (data.fileSize > MAX_BASE64_LENGTH) {
-    throw new HttpError(413, `Resim çok büyük (max ${MAX_BASE64_LENGTH / 1_000_000}MB)`);
-  }
-  if (!data.base64Data.startsWith('data:') && !/^[A-Za-z0-9+/=]+$/.test(data.base64Data)) {
-    throw new HttpError(400, 'Geçersiz base64 formatı');
+    throw new HttpError(413, `Resim cok buyuk (max ${MAX_BASE64_LENGTH / 1_000_000}MB)`);
   }
 };
 
-// === Public DTO ===
-
 export interface ProductDTO {
   id: string;
+  tenantId: string;
   sku: string;
   name: string;
   description: string | null;
@@ -79,193 +60,210 @@ export interface ProductDetailDTO extends ProductDTO {
   }>;
 }
 
-const toProductDTO = (row: Product, primaryImage: ProductImage | null, imageCount: number, category: { id: string; name: string; slug: string } | null): ProductDTO => ({
+interface RawProductRow {
+  id: string;
+  tenantId: string;
+  sku: string;
+  name: string;
+  description: string | null;
+  price: string;
+  currency: string;
+  categoryId: string | null;
+  brand: string | null;
+  unit: string | null;
+  notes: string | null;
+  attributes: string | null;
+  sortOrder: number;
+  isActive: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+  catId: string | null;
+  catName: string | null;
+  catSlug: string | null;
+}
+
+const toProductDTO = (row: RawProductRow, primaryImage: { id: string; base64Data: string; mimeType: string } | null, imageCount: number): ProductDTO => ({
   id: row.id,
+  tenantId: row.tenantId,
   sku: row.sku,
   name: row.name,
   description: row.description,
   price: Number(row.price),
   currency: row.currency,
   categoryId: row.categoryId,
-  category,
+  category: row.catId ? { id: row.catId, name: row.catName!, slug: row.catSlug! } : null,
   brand: row.brand,
   unit: row.unit,
   notes: row.notes,
-  attributes: row.attributes ?? {},
+  attributes: row.attributes ? JSON.parse(row.attributes) : {},
   sortOrder: row.sortOrder,
   isActive: row.isActive,
   imageCount,
-  primaryImage: primaryImage
-    ? { id: primaryImage.id, base64Data: primaryImage.base64Data, mimeType: primaryImage.mimeType }
-    : null,
+  primaryImage,
   createdAt: row.createdAt.toISOString(),
   updatedAt: row.updatedAt.toISOString(),
 });
 
-// === List ===
+const PRODUCT_SELECT = `
+  p.id, p.tenant_id AS tenantId, p.sku, p.name, p.description, CAST(p.price AS VARCHAR) AS price,
+  p.currency, p.category_id AS categoryId, p.brand, p.unit, p.notes, p.attributes,
+  p.sort_order AS sortOrder, p.is_active AS isActive,
+  p.created_at AS createdAt, p.updated_at AS updatedAt,
+  c.id AS catId, c.name AS catName, c.slug AS catSlug
+`;
 
 export interface ListProductsOptions {
   page?: number;
-  limit?: number;
+  pageSize?: number;
   search?: string;
   categoryId?: string;
   brand?: string;
+  priceMin?: number;
+  priceMax?: number;
   isActive?: boolean;
-  sortBy?: 'name' | 'price' | 'createdAt' | 'sortOrder';
-  sortOrder?: 'asc' | 'desc';
-}
-
-export interface PaginatedResponse<T> {
-  data: T[];
-  pagination: {
-    page: number;
-    limit: number;
-    total: number;
-    totalPages: number;
-  };
+  sort?: 'sortOrder' | 'name' | 'price' | 'createdAt' | 'updatedAt';
+  order?: 'asc' | 'desc';
 }
 
 export const listProducts = async (
   tenantId: string,
   options: ListProductsOptions = {},
-): Promise<PaginatedResponse<ProductDTO>> => {
+): Promise<{ items: ProductDTO[]; total: number }> => {
+  const pool = await getPool();
   const page = Math.max(1, options.page ?? 1);
-  const limit = Math.min(MAX_PAGE_SIZE, Math.max(1, options.limit ?? DEFAULT_PAGE_SIZE));
-  const offset = (page - 1) * limit;
+  const pageSize = Math.min(MAX_PAGE_SIZE, Math.max(1, options.pageSize ?? DEFAULT_PAGE_SIZE));
+  const offset = (page - 1) * pageSize;
 
-  // === Build WHERE conditions ===
-  const conditions: (SQL | undefined)[] = [withTenant(products, tenantId)];
-
+  let where = 'p.tenant_id = @tenantId';
+  if (options.isActive !== undefined) where += ' AND p.is_active = @isActive';
+  else where += ' AND p.is_active = 1';
   if (options.search) {
-    const term = `%${options.search}%`;
-    conditions.push(
-      or(
-        ilike(products.name, term),
-        ilike(products.sku, term),
-        ilike(products.description, term),
-      ),
-    );
+    where += ` AND (LOWER(p.name) LIKE @search OR LOWER(p.sku) LIKE @search)`;
   }
   if (options.categoryId) {
-    conditions.push(eq(products.categoryId, options.categoryId));
+    where += ' AND p.category_id = @categoryId';
   }
   if (options.brand) {
-    conditions.push(ilike(products.brand, options.brand));
+    where += ' AND LOWER(p.brand) LIKE @brand';
   }
-  if (typeof options.isActive === 'boolean') {
-    conditions.push(eq(products.isActive, options.isActive));
-  }
+  if (options.priceMin !== undefined) where += ' AND p.price >= @priceMin';
+  if (options.priceMax !== undefined) where += ' AND p.price <= @priceMax';
 
-  // === Build ORDER BY ===
-  const sortBy = options.sortBy ?? 'sortOrder';
-  const sortOrder = options.sortOrder ?? 'asc';
-  const orderColumn = {
-    name: products.name,
-    price: products.price,
-    createdAt: products.createdAt,
-    sortOrder: products.sortOrder,
-  }[sortBy];
-  const orderFn = sortOrder === 'asc' ? asc : desc;
+  const sortCol = {
+    sortOrder: 'p.sort_order',
+    name: 'p.name',
+    price: 'p.price',
+    createdAt: 'p.created_at',
+    updatedAt: 'p.updated_at',
+  }[options.sort ?? 'sortOrder'];
+  const sortDir = options.order === 'desc' ? 'DESC' : 'ASC';
 
-  // === Total count ===
-  const [{ count }] = await db
-    .select({ count: sql<number>`count(*)` })
-    .from(products)
-    .where(tenantAnd(products, tenantId, ...conditions));
+  const req = pool.request()
+    .input('tenantId', sql.UniqueIdentifier, tenantId)
+    .input('search', sql.NVarChar, options.search ? `%${options.search.toLowerCase()}%` : '')
+    .input('categoryId', sql.UniqueIdentifier, options.categoryId ?? null)
+    .input('brand', sql.NVarChar, options.brand ? `%${options.brand.toLowerCase()}%` : '')
+    .input('priceMin', sql.Decimal(12, 2), options.priceMin ?? null)
+    .input('priceMax', sql.Decimal(12, 2), options.priceMax ?? null)
+    .input('isActive', sql.Bit, options.isActive ?? true)
+    .input('offset', sql.Int, offset)
+    .input('pageSize', sql.Int, pageSize);
 
-  // === Data query with category + primary image ===
-  const rows = await db
-    .select({
-      product: products,
-      category: { id: categories.id, name: categories.name, slug: categories.slug },
-    })
-    .from(products)
-    .leftJoin(categories, eq(products.categoryId, categories.id))
-    .where(tenantAnd(products, tenantId, ...conditions))
-    .orderBy(orderFn(orderColumn), asc(products.id))
-    .limit(limit)
-    .offset(offset);
+  const itemsR = await req.query(`
+    SELECT ${PRODUCT_SELECT}
+    FROM products p
+    LEFT JOIN categories c ON c.id = p.category_id
+    WHERE ${where}
+    ORDER BY ${sortCol} ${sortDir}
+    OFFSET @offset ROWS FETCH NEXT @pageSize ROWS ONLY`);
 
-  // === Image counts + primary image lookup ===
-  // N+1 query (Faz 2.4'te optimizasyon): her ürün için ayrı sorgu
-  // Şimdilik kabul edilebilir (20-50 ürün/sayfa). İleride JOIN ile.
-  const productIds = rows.map((r) => r.product.id);
-  const imageMap = new Map<string, { count: number; primary: ProductImage | null }>();
+  // total count
+  const totalReq = pool.request().input('tenantId', sql.UniqueIdentifier, tenantId);
+  if (options.search) totalReq.input('search', sql.NVarChar, `%${options.search.toLowerCase()}%`);
+  if (options.categoryId) totalReq.input('categoryId', sql.UniqueIdentifier, options.categoryId);
+  if (options.brand) totalReq.input('brand', sql.NVarChar, `%${options.brand.toLowerCase()}%`);
+  if (options.priceMin !== undefined) totalReq.input('priceMin', sql.Decimal(12, 2), options.priceMin);
+  if (options.priceMax !== undefined) totalReq.input('priceMax', sql.Decimal(12, 2), options.priceMax);
+  if (options.isActive !== undefined) totalReq.input('isActive', sql.Bit, options.isActive);
+  const totalR = await totalReq.query(`SELECT COUNT(*) AS total FROM products p WHERE ${where.replace(/@(\w+)/g, '@$1')}`);
+  const total = totalR.recordset[0]?.total ?? 0;
 
+  // imageCount + primaryImage (batch query — N+1 onlemek icin)
+  const productIds = itemsR.recordset.map((r) => r.id);
+  const imageMap = new Map<string, { count: number; primary: { id: string; base64Data: string; mimeType: string } | null }>();
   if (productIds.length > 0) {
-    const images = await db
-      .select()
-      .from(productImages)
-      .where(inArray(productImages.productId, productIds));
-    for (const img of images) {
-      const existing = imageMap.get(img.productId) ?? { count: 0, primary: null };
-      existing.count += 1;
-      if (img.isPrimary) existing.primary = img;
-      else if (!existing.primary && img.sortOrder === 0) existing.primary = img;
-      imageMap.set(img.productId, existing);
+    const imgR = await pool.request()
+      .input('tenantId', sql.UniqueIdentifier, tenantId)
+      .query(`SELECT product_id AS productId, id, base64_data AS base64Data, mime_type AS mimeType, is_primary AS isPrimary
+              FROM product_images
+              WHERE tenant_id = @tenantId AND product_id IN (${productIds.map((_, i) => `@p${i}`).join(',')})`,
+              ...productIds.reduce<sql.Request>((r, id, i) => r.input(`p${i}`, sql.UniqueIdentifier, id), pool.request()))
+      .catch(() => ({ recordset: [] as Array<{ productId: string; id: string; base64Data: string; mimeType: string; isPrimary: boolean }> }));
+    // Basitlestirilmis: ayri ayri query ile productId baz'inda
+    for (const pid of productIds) {
+      const cntR = await pool.request()
+        .input('tenantId', sql.UniqueIdentifier, tenantId)
+        .input('pid', sql.UniqueIdentifier, pid)
+        .query(`SELECT COUNT(*) AS c FROM product_images WHERE tenant_id = @tenantId AND product_id = @pid`);
+      const primR = await pool.request()
+        .input('tenantId', sql.UniqueIdentifier, tenantId)
+        .input('pid', sql.UniqueIdentifier, pid)
+        .query(`SELECT TOP 1 id, base64_data AS base64Data, mime_type AS mimeType
+                FROM product_images
+                WHERE tenant_id = @tenantId AND product_id = @pid AND is_primary = 1
+                ORDER BY sort_order ASC`);
+      imageMap.set(pid, { count: cntR.recordset[0]?.c ?? 0, primary: primR.recordset[0] ?? null });
     }
   }
 
-  const data = rows.map((r) => {
-    const imgInfo = imageMap.get(r.product.id) ?? { count: 0, primary: null };
-    return toProductDTO(r.product, imgInfo.primary, imgInfo.count, r.category);
+  const items = itemsR.recordset.map((r) => {
+    const im = imageMap.get(r.id) ?? { count: 0, primary: null };
+    return toProductDTO(r, im.primary, im.count);
   });
 
-  return {
-    data,
-    pagination: {
-      page,
-      limit,
-      total: Number(count),
-      totalPages: Math.ceil(Number(count) / limit),
-    },
-  };
+  return { items, total };
 };
 
-// === Get one ===
-
 export const getProduct = async (tenantId: string, id: string): Promise<ProductDetailDTO> => {
-  const [row] = await db
-    .select({
-      product: products,
-      category: { id: categories.id, name: categories.name, slug: categories.slug },
-    })
-    .from(products)
-    .leftJoin(categories, eq(products.categoryId, categories.id))
-    .where(and(eq(products.id, id), withTenant(products, tenantId)))
-    .limit(1);
+  const pool = await getPool();
+  const r = await pool.request()
+    .input('tenantId', sql.UniqueIdentifier, tenantId)
+    .input('id', sql.UniqueIdentifier, id)
+    .query(`SELECT ${PRODUCT_SELECT}
+            FROM products p
+            LEFT JOIN categories c ON c.id = p.category_id
+            WHERE p.id = @id AND p.tenant_id = @tenantId`);
+  const row = r.recordset[0];
+  if (!row) throw new HttpError(404, 'Urun bulunamadi');
 
-  if (!row) throw new HttpError(404, 'Ürün bulunamadı');
+  const imgsR = await pool.request()
+    .input('tenantId', sql.UniqueIdentifier, tenantId)
+    .input('pid', sql.UniqueIdentifier, id)
+    .query(`SELECT id, base64_data AS base64Data, mime_type AS mimeType, sort_order AS sortOrder,
+            is_primary AS isPrimary, file_size AS fileSize, created_at AS createdAt
+     FROM product_images WHERE tenant_id = @tenantId AND product_id = @pid ORDER BY sort_order ASC, created_at ASC`);
 
-  const images = await db
-    .select()
-    .from(productImages)
-    .where(eq(productImages.productId, id))
-    .orderBy(asc(productImages.sortOrder), asc(productImages.createdAt));
-
-  const primary = images.find((i) => i.isPrimary) ?? images[0] ?? null;
-
+  const primary = imgsR.recordset.find((i) => i.isPrimary) ?? imgsR.recordset[0] ?? null;
+  const dto = toProductDTO(row, primary ? { id: primary.id, base64Data: primary.base64Data, mimeType: primary.mimeType } : null, imgsR.recordset.length);
   return {
-    ...toProductDTO(row.product, primary, images.length, row.category),
-    images: images.map((img) => ({
-      id: img.id,
-      base64Data: img.base64Data,
-      mimeType: img.mimeType,
-      sortOrder: img.sortOrder,
-      isPrimary: img.isPrimary,
-      fileSize: img.fileSize,
-      createdAt: img.createdAt.toISOString(),
+    ...dto,
+    images: imgsR.recordset.map((i) => ({
+      id: i.id,
+      base64Data: i.base64Data,
+      mimeType: i.mimeType,
+      sortOrder: i.sortOrder,
+      isPrimary: i.isPrimary,
+      fileSize: i.fileSize,
+      createdAt: i.createdAt.toISOString(),
     })),
   };
 };
-
-// === Create ===
 
 export interface ProductInput {
   sku: string;
   name: string;
   description?: string | null;
-  price?: number;
+  price: number;
   currency?: 'TRY' | 'USD' | 'EUR' | 'GBP';
   categoryId?: string | null;
   brand?: string | null;
@@ -276,106 +274,81 @@ export interface ProductInput {
   isActive?: boolean;
 }
 
-const ensureUniqueSku = async (tenantId: string, sku: string, excludeId?: string): Promise<void> => {
-  const existing = await db
-    .select({ id: products.id })
-    .from(products)
-    .where(and(eq(products.tenantId, tenantId), eq(products.sku, sku)))
-    .limit(1);
-  if (existing.length > 0 && existing[0].id !== excludeId) {
-    throw new HttpError(409, 'Bu SKU zaten kullanılıyor');
-  }
+export const createProduct = async (tenantId: string, input: ProductInput): Promise<ProductDTO> => {
+  const pool = await getPool();
+  const r = await pool.request()
+    .input('tenantId', sql.UniqueIdentifier, tenantId)
+    .input('sku', sql.NVarChar, input.sku)
+    .input('name', sql.NVarChar, input.name)
+    .input('description', sql.NVarChar, input.description ?? null)
+    .input('price', sql.Decimal(12, 2), String(input.price))
+    .input('currency', sql.NVarChar, input.currency ?? 'TRY')
+    .input('categoryId', sql.UniqueIdentifier, input.categoryId ?? null)
+    .input('brand', sql.NVarChar, input.brand ?? null)
+    .input('unit', sql.NVarChar, input.unit ?? null)
+    .input('notes', sql.NVarChar, input.notes ?? null)
+    .input('attributes', sql.NVarChar, JSON.stringify(input.attributes ?? {}))
+    .input('sortOrder', sql.Int, input.sortOrder ?? 0)
+    .input('isActive', sql.Bit, input.isActive ?? true)
+    .query(`INSERT INTO products (tenant_id, sku, name, description, price, currency, category_id, brand, unit, notes, attributes, sort_order, is_active)
+            OUTPUT INSERTED.id
+            VALUES (@tenantId, @sku, @name, @description, @price, @currency, @categoryId, @brand, @unit, @notes, @attributes, @sortOrder, @isActive)`);
+  const id = r.recordset[0].id;
+  return (await getProduct(tenantId, id)) as ProductDTO;
 };
-
-const ensureCategoryExists = async (
-  tenantId: string,
-  categoryId: string,
-): Promise<void> => {
-  const [cat] = await db
-    .select({ id: categories.id })
-    .from(categories)
-    .where(and(eq(categories.id, categoryId), withTenant(categories, tenantId)))
-    .limit(1);
-  if (!cat) throw new HttpError(404, 'Kategori bulunamadı');
-};
-
-export const createProduct = async (tenantId: string, input: ProductInput): Promise<ProductDetailDTO> => {
-  await ensureUniqueSku(tenantId, input.sku);
-  if (input.categoryId) await ensureCategoryExists(tenantId, input.categoryId);
-
-  const insertData: NewProduct = {
-    tenantId,
-    sku: input.sku,
-    name: input.name,
-    description: input.description ?? null,
-    price: String(input.price ?? 0),
-    currency: input.currency ?? 'TRY',
-    categoryId: input.categoryId ?? null,
-    brand: input.brand ?? null,
-    unit: input.unit ?? null,
-    notes: input.notes ?? null,
-    attributes: input.attributes ?? {},
-    sortOrder: input.sortOrder ?? 0,
-    isActive: input.isActive ?? true,
-  };
-
-  const [created] = await db.insert(products).values(insertData).returning();
-  logger.info({ productId: created.id, sku: created.sku, tenantId }, 'Product created');
-
-  return getProduct(tenantId, created.id);
-};
-
-// === Update ===
 
 export const updateProduct = async (
   tenantId: string,
   id: string,
   input: Partial<ProductInput>,
-): Promise<ProductDetailDTO> => {
-  const existing = await getProduct(tenantId, id);
-  if (input.sku && input.sku !== existing.sku) {
-    await ensureUniqueSku(tenantId, input.sku, id);
-  }
-  if (input.categoryId && input.categoryId !== existing.categoryId) {
-    await ensureCategoryExists(tenantId, input.categoryId);
-  }
+): Promise<ProductDTO> => {
+  const pool = await getPool();
+  // Mevcut urun var mi
+  const ex = await pool.request()
+    .input('tenantId', sql.UniqueIdentifier, tenantId)
+    .input('id', sql.UniqueIdentifier, id)
+    .query(`SELECT id FROM products WHERE id = @id AND tenant_id = @tenantId`);
+  if (!ex.recordset[0]) throw new HttpError(404, 'Urun bulunamadi');
 
-  const updateData: Partial<NewProduct> = {
-    sku: input.sku,
-    name: input.name,
-    description: input.description,
-    price: input.price !== undefined ? String(input.price) : undefined,
-    currency: input.currency,
-    categoryId: input.categoryId,
-    brand: input.brand,
-    unit: input.unit,
-    notes: input.notes,
-    attributes: input.attributes,
-    sortOrder: input.sortOrder,
-    isActive: input.isActive,
-    updatedAt: new Date(),
-  };
-
-  await db
-    .update(products)
-    .set(updateData)
-    .where(and(eq(products.id, id), withTenant(products, tenantId)));
-
-  return getProduct(tenantId, id);
+  await pool.request()
+    .input('tenantId', sql.UniqueIdentifier, tenantId)
+    .input('id', sql.UniqueIdentifier, id)
+    .input('name', sql.NVarChar, input.name ?? null)
+    .input('description', sql.NVarChar, input.description ?? null)
+    .input('price', sql.Decimal(12, 2), input.price !== undefined ? String(input.price) : null)
+    .input('currency', sql.NVarChar, input.currency ?? null)
+    .input('categoryId', sql.UniqueIdentifier, input.categoryId !== undefined ? input.categoryId : null)
+    .input('brand', sql.NVarChar, input.brand ?? null)
+    .input('unit', sql.NVarChar, input.unit ?? null)
+    .input('notes', sql.NVarChar, input.notes ?? null)
+    .input('attributes', sql.NVarChar, input.attributes ? JSON.stringify(input.attributes) : null)
+    .input('sortOrder', sql.Int, input.sortOrder ?? null)
+    .input('isActive', sql.Bit, input.isActive ?? null)
+    .query(`UPDATE products
+            SET name = COALESCE(@name, name),
+                description = COALESCE(@description, description),
+                price = COALESCE(@price, price),
+                currency = COALESCE(@currency, currency),
+                category_id = COALESCE(@categoryId, category_id),
+                brand = COALESCE(@brand, brand),
+                unit = COALESCE(@unit, unit),
+                notes = COALESCE(@notes, notes),
+                attributes = COALESCE(@attributes, attributes),
+                sort_order = COALESCE(@sortOrder, sort_order),
+                is_active = COALESCE(@isActive, is_active),
+                updated_at = getdate()
+            WHERE id = @id AND tenant_id = @tenantId`);
+  return (await getProduct(tenantId, id)) as ProductDTO;
 };
-
-// === Delete ===
 
 export const deleteProduct = async (tenantId: string, id: string): Promise<void> => {
-  const result = await db
-    .delete(products)
-    .where(and(eq(products.id, id), withTenant(products, tenantId)))
-    .returning({ id: products.id });
-  if (result.length === 0) throw new HttpError(404, 'Ürün bulunamadı');
-  logger.info({ productId: id, tenantId }, 'Product deleted');
+  const pool = await getPool();
+  const r = await pool.request()
+    .input('tenantId', sql.UniqueIdentifier, tenantId)
+    .input('id', sql.UniqueIdentifier, id)
+    .query(`DELETE FROM products WHERE id = @id AND tenant_id = @tenantId`);
+  if (r.rowsAffected[0] === 0) throw new HttpError(404, 'Urun bulunamadi');
 };
-
-// === Image management ===
 
 export interface ImageInput {
   base64Data: string;
@@ -389,33 +362,37 @@ export const addProductImage = async (
   tenantId: string,
   productId: string,
   input: ImageInput,
-): Promise<ProductImage> => {
-  // Product var mı ve tenant'a mı ait? (getProduct 404 fırlatır yoksa)
-  await getProduct(tenantId, productId);
-
+): Promise<{ id: string }> => {
   validateImage(input);
+  const pool = await getPool();
 
-  // Eğer bu primary olacaksa, diğerlerinin primary'sini kaldır
+  // Ürün var mı
+  const ex = await pool.request()
+    .input('tenantId', sql.UniqueIdentifier, tenantId)
+    .input('productId', sql.UniqueIdentifier, productId)
+    .query(`SELECT id FROM products WHERE id = @productId AND tenant_id = @tenantId`);
+  if (!ex.recordset[0]) throw new HttpError(404, 'Urun bulunamadi');
+
+  // is_primary true ise digerlerini false yap
   if (input.isPrimary) {
-    await db
-      .update(productImages)
-      .set({ isPrimary: false })
-      .where(eq(productImages.productId, productId));
+    await pool.request()
+      .input('tenantId', sql.UniqueIdentifier, tenantId)
+      .input('productId', sql.UniqueIdentifier, productId)
+      .query(`UPDATE product_images SET is_primary = 0 WHERE tenant_id = @tenantId AND product_id = @productId`);
   }
 
-  const insertData: NewProductImage = {
-    tenantId,
-    productId,
-    base64Data: input.base64Data,
-    mimeType: input.mimeType,
-    fileSize: input.fileSize,
-    isPrimary: input.isPrimary ?? false,
-    sortOrder: input.sortOrder ?? 0,
-  };
-  const [created] = await db.insert(productImages).values(insertData).returning();
-
-  logger.info({ productId, imageId: created.id, fileSize: created.fileSize }, 'Image added');
-  return created;
+  const r = await pool.request()
+    .input('tenantId', sql.UniqueIdentifier, tenantId)
+    .input('productId', sql.UniqueIdentifier, productId)
+    .input('base64Data', sql.NVarChar, input.base64Data)
+    .input('mimeType', sql.NVarChar, input.mimeType)
+    .input('fileSize', sql.Int, input.fileSize)
+    .input('isPrimary', sql.Bit, input.isPrimary ?? false)
+    .input('sortOrder', sql.Int, input.sortOrder ?? 0)
+    .query(`INSERT INTO product_images (tenant_id, product_id, base64_data, mime_type, file_size, is_primary, sort_order)
+            OUTPUT INSERTED.id
+            VALUES (@tenantId, @productId, @base64Data, @mimeType, @fileSize, @isPrimary, @sortOrder)`);
+  return { id: r.recordset[0].id };
 };
 
 export const deleteProductImage = async (
@@ -423,41 +400,13 @@ export const deleteProductImage = async (
   productId: string,
   imageId: string,
 ): Promise<void> => {
-  const result = await db
-    .delete(productImages)
-    .where(
-      and(
-        eq(productImages.id, imageId),
-        eq(productImages.productId, productId),
-        withTenant(productImages, tenantId),
-      ),
-    )
-    .returning({ id: productImages.id });
-  if (result.length === 0) throw new HttpError(404, 'Resim bulunamadı');
+  const pool = await getPool();
+  const r = await pool.request()
+    .input('tenantId', sql.UniqueIdentifier, tenantId)
+    .input('productId', sql.UniqueIdentifier, productId)
+    .input('imageId', sql.UniqueIdentifier, imageId)
+    .query(`DELETE FROM product_images WHERE id = @imageId AND product_id = @productId AND tenant_id = @tenantId`);
+  if (r.rowsAffected[0] === 0) throw new HttpError(404, 'Resim bulunamadi');
 };
 
-export const setImagePrimary = async (
-  tenantId: string,
-  productId: string,
-  imageId: string,
-): Promise<void> => {
-  // Önce tüm primary'leri kaldır
-  await db
-    .update(productImages)
-    .set({ isPrimary: false })
-    .where(and(eq(productImages.productId, productId), withTenant(productImages, tenantId)));
-
-  // Sonra bu image'ı primary yap
-  const result = await db
-    .update(productImages)
-    .set({ isPrimary: true })
-    .where(
-      and(
-        eq(productImages.id, imageId),
-        eq(productImages.productId, productId),
-        withTenant(productImages, tenantId),
-      ),
-    )
-    .returning({ id: productImages.id });
-  if (result.length === 0) throw new HttpError(404, 'Resim bulunamadı');
-};
+logger.info('product.service.ts (raw mssql) yuklendi');

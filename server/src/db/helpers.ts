@@ -1,38 +1,56 @@
-import { eq, and, type SQL } from 'drizzle-orm';
+import sql from 'mssql';
+import { getPool } from '../config/database';
 
 /**
- * Tenant filter helper. Multi-tenant mimarinin temel taşı.
+ * MSSQL tenant filter helper. Multi-tenant mimarinin temel taşı.
  *
  * Tüm domain query'leri (products, customers, catalogs, ...) bu helper
  * üzerinden tenant filtresi almalı. Raw SQL yazarken unutulmamalı;
  * unutulursa bir tenant diğerinin verisini görebilir.
  *
- * NOT: AnyMsSqlColumn type import'u drizzle-orm/mssql-core'dan geliyordu
- * ama TS exports map eksik. Generic constraint'i `any` yaptık, runtime
- * davranışı değişmedi.
- *
- * Kullanım:
- *   const products = await db
- *     .select()
- *     .from(products)
- *     .where(withTenant(products, req.user!.tenantId));
- *
- * Zincirleme koşullarla:
- *   const filtered = await db
- *     .select()
- *     .from(products)
- *     .where(tenantAnd(products, tenantId, eq(products.isActive, true)));
+ * NOT: Drizzle ORM'den raw mssql'e gecildi (drizzle-orm@latest'te MSSEL
+ * exports yok). Type-safety Zod schema validation ile telafi edilir.
  */
-export const withTenant = <T extends { tenantId: any }>(
-  table: T,
-  tenantId: string,
-): SQL => eq(table.tenantId, tenantId);
 
-export const tenantAnd = <T extends { tenantId: any }>(
-  table: T,
+export interface TenantFilterOptions {
+  /** tenantId kolonunun adı (genelde 'tenant_id') */
+  column?: string;
+}
+
+/**
+ * Tenant filtresini request'e ekler. Ornek:
+ *   const req = pool.request();
+ *   tenantFilter(req, tenantId);
+ *   const result = await req.query('SELECT * FROM products WHERE 1=1 ' + whereClause);
+ */
+export function tenantFilter(
+  request: sql.Request,
   tenantId: string,
-  ...conditions: (SQL | undefined)[]
-): SQL | undefined => {
-  const filtered = conditions.filter((c): c is SQL => c !== undefined);
-  return and(eq(table.tenantId, tenantId), ...filtered);
-};
+  options: TenantFilterOptions = {},
+): sql.Request {
+  const column = options.column ?? 'tenant_id';
+  return request.input('tenantId', sql.UniqueIdentifier, tenantId);
+}
+
+/**
+ * Tenant filtre WHERE clause'i olusturur (parametre placeholder ile).
+ * SQL sorgusuna ekleyin: 'SELECT * FROM products WHERE 1=1' + tenantWhere(...)
+ */
+export function tenantWhere(options: TenantFilterOptions = {}): string {
+  const column = options.column ?? 'tenant_id';
+  return ` AND ${column} = @tenantId`;
+}
+
+/**
+ * Mevcut bir request'i pool'dan alip tenant filtresi ile donduren yardimci.
+ */
+export async function getTenantRequest(tenantId: string): Promise<sql.Request> {
+  const pool = await getPool();
+  return tenantFilter(pool.request(), tenantId);
+}
+
+/**
+ * MSSQL update/insert icin ortak payload builder.
+ * Field isimleri MSSEL snake_case ile ayni (Drizzle default).
+ */
+export const mssqlNow = (): string => new Date().toISOString();

@@ -1,25 +1,19 @@
-import { eq, and, or, ilike, desc, asc, sql, type SQL } from 'drizzle-orm';
-import { db } from '../config/database';
-import { customers, type Customer, type NewCustomer } from '../db/schema';
-import { withTenant, tenantAnd } from '../db/helpers';
+import sql from 'mssql';
+import { getPool } from '../config/database';
 import { HttpError } from '../middleware/errorHandler';
-import { logger } from '../utils/logger';
 
 /**
- * Customer service. Multi-tenant row-level isolation withTenant ile.
- * Ürün service'i ile benzer pattern: list + DTO + sayfalama + arama.
+ * Customer service. Raw mssql ile multi-tenant row-level isolation.
  *
- * erpCustomerId: Faz 4'te ERP sync için kullanılacak. Şimdilik UI'dan
- * set edilmez, otomatik atanmaz.
+ * NOT: Drizzle ORM'den raw mssql'e gecildi (drizzle-orm'de MSSEL exports yok).
  */
 
 const DEFAULT_PAGE_SIZE = 20;
 const MAX_PAGE_SIZE = 100;
 
-// === DTO ===
-
 export interface CustomerDTO {
   id: string;
+  tenantId: string;
   name: string;
   contactName: string | null;
   email: string | null;
@@ -35,8 +29,27 @@ export interface CustomerDTO {
   updatedAt: string;
 }
 
-const toDTO = (c: Customer): CustomerDTO => ({
+interface RawRow {
+  id: string;
+  tenantId: string;
+  name: string;
+  contactName: string | null;
+  email: string | null;
+  phone: string | null;
+  address: string | null;
+  taxNumber: string | null;
+  taxOffice: string | null;
+  erpCustomerId: string | null;
+  source: string;
+  notes: string | null;
+  isActive: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+const toDTO = (c: RawRow): CustomerDTO => ({
   id: c.id,
+  tenantId: c.tenantId,
   name: c.name,
   contactName: c.contactName,
   email: c.email,
@@ -45,101 +58,73 @@ const toDTO = (c: Customer): CustomerDTO => ({
   taxNumber: c.taxNumber,
   taxOffice: c.taxOffice,
   erpCustomerId: c.erpCustomerId,
-  source: c.source,
+  source: c.source as 'manual' | 'excel' | 'erp',
   notes: c.notes,
   isActive: c.isActive,
   createdAt: c.createdAt.toISOString(),
   updatedAt: c.updatedAt.toISOString(),
 });
 
-// === List ===
+const SELECT = `
+  id, tenant_id AS tenantId, name, contact_name AS contactName, email, phone, address,
+  tax_number AS taxNumber, tax_office AS taxOffice, erp_customer_id AS erpCustomerId,
+  source, notes, is_active AS isActive,
+  created_at AS createdAt, updated_at AS updatedAt
+`;
 
-export interface ListOptions {
+export interface ListCustomersOptions {
   page?: number;
   limit?: number;
   search?: string;
   source?: 'manual' | 'excel' | 'erp';
   isActive?: boolean;
-  sortBy?: 'name' | 'createdAt' | 'updatedAt';
-  sortOrder?: 'asc' | 'desc';
-}
-
-export interface PaginatedResponse<T> {
-  data: T[];
-  pagination: { page: number; limit: number; total: number; totalPages: number };
+  erpCustomerId?: string;
 }
 
 export const listCustomers = async (
   tenantId: string,
-  options: ListOptions = {},
-): Promise<PaginatedResponse<CustomerDTO>> => {
+  options: ListCustomersOptions = {},
+): Promise<{ items: CustomerDTO[]; total: number }> => {
+  const pool = await getPool();
   const page = Math.max(1, options.page ?? 1);
   const limit = Math.min(MAX_PAGE_SIZE, Math.max(1, options.limit ?? DEFAULT_PAGE_SIZE));
   const offset = (page - 1) * limit;
 
-  const conditions: (SQL | undefined)[] = [withTenant(customers, tenantId)];
+  let where = 'tenant_id = @tenantId';
+  if (options.isActive !== undefined) where += ' AND is_active = @isActive';
+  if (options.search) where += ' AND (LOWER(name) LIKE @search OR LOWER(email) LIKE @search)';
+  if (options.source) where += ' AND source = @source';
+  if (options.erpCustomerId !== undefined) where += ' AND erp_customer_id = @erpCustomerId';
 
-  if (options.search) {
-    const term = `%${options.search}%`;
-    conditions.push(
-      or(
-        ilike(customers.name, term),
-        ilike(customers.contactName, term),
-        ilike(customers.email, term),
-        ilike(customers.phone, term),
-        ilike(customers.taxNumber, term),
-      ),
-    );
-  }
-  if (options.source) conditions.push(eq(customers.source, options.source));
-  if (typeof options.isActive === 'boolean') conditions.push(eq(customers.isActive, options.isActive));
+  const req = pool.request()
+    .input('tenantId', sql.UniqueIdentifier, tenantId)
+    .input('search', sql.NVarChar, options.search ? `%${options.search.toLowerCase()}%` : '')
+    .input('isActive', sql.Bit, options.isActive ?? true)
+    .input('source', sql.NVarChar, options.source ?? null)
+    .input('erpCustomerId', sql.NVarChar, options.erpCustomerId ?? null)
+    .input('offset', sql.Int, offset)
+    .input('limit', sql.Int, limit);
 
-  const sortBy = options.sortBy ?? 'name';
-  const sortOrder = options.sortOrder ?? 'asc';
-  const orderColumn = {
-    name: customers.name,
-    createdAt: customers.createdAt,
-    updatedAt: customers.updatedAt,
-  }[sortBy];
-  const orderFn = sortOrder === 'asc' ? asc : desc;
+  const itemsR = await req.query(`SELECT ${SELECT} FROM customers WHERE ${where}
+                                  ORDER BY name ASC OFFSET @offset ROWS FETCH NEXT @limit ROWS ONLY`);
 
-  const [{ count }] = await db
-    .select({ count: sql<number>`count(*)` })
-    .from(customers)
-    .where(tenantAnd(customers, tenantId, ...conditions));
-
-  const rows = await db
-    .select()
-    .from(customers)
-    .where(tenantAnd(customers, tenantId, ...conditions))
-    .orderBy(orderFn(orderColumn), asc(customers.id))
-    .limit(limit)
-    .offset(offset);
-
-  return {
-    data: rows.map(toDTO),
-    pagination: {
-      page,
-      limit,
-      total: Number(count),
-      totalPages: Math.ceil(Number(count) / limit),
-    },
-  };
+  const totalR = await pool.request()
+    .input('tenantId', sql.UniqueIdentifier, tenantId)
+    .query(`SELECT COUNT(*) AS total FROM customers WHERE ${where.replace(/@(\w+)/g, '@$1')}`);
+  const total = totalR.recordset[0]?.total ?? 0;
+  return { items: itemsR.recordset.map(toDTO), total };
 };
-
-// === Get one ===
 
 export const getCustomer = async (tenantId: string, id: string): Promise<CustomerDTO> => {
-  const [row] = await db
-    .select()
-    .from(customers)
-    .where(and(eq(customers.id, id), withTenant(customers, tenantId)))
-    .limit(1);
-  if (!row) throw new HttpError(404, 'Müşteri bulunamadı');
-  return toDTO(row);
+  const pool = await getPool();
+  const r = await pool.request()
+    .input('tenantId', sql.UniqueIdentifier, tenantId)
+    .input('id', sql.UniqueIdentifier, id)
+    .query(`SELECT ${SELECT} FROM customers WHERE id = @id AND tenant_id = @tenantId`);
+  const c = r.recordset[0];
+  if (!c) throw new HttpError(404, 'Musteri bulunamadi');
+  return toDTO(c);
 };
-
-// === Create ===
 
 export interface CustomerInput {
   name: string;
@@ -151,138 +136,65 @@ export interface CustomerInput {
   taxOffice?: string | null;
   notes?: string | null;
   isActive?: boolean;
-  source?: 'manual' | 'excel' | 'erp';
-  erpCustomerId?: string | null;
 }
 
 export const createCustomer = async (tenantId: string, input: CustomerInput): Promise<CustomerDTO> => {
-  if (!input.name?.trim()) throw new HttpError(400, 'Firma adı zorunludur');
-
-  const insertData: NewCustomer = {
-    tenantId,
-    name: input.name.trim(),
-    contactName: input.contactName ?? null,
-    email: input.email ?? null,
-    phone: input.phone ?? null,
-    address: input.address ?? null,
-    taxNumber: input.taxNumber ?? null,
-    taxOffice: input.taxOffice ?? null,
-    erpCustomerId: input.erpCustomerId ?? null,
-    source: input.source ?? 'manual',
-    notes: input.notes ?? null,
-    isActive: input.isActive ?? true,
-  };
-  const [created] = await db.insert(customers).values(insertData).returning();
-  logger.info({ customerId: created.id, tenantId, name: created.name }, 'Customer created');
-  return toDTO(created);
+  const pool = await getPool();
+  const r = await pool.request()
+    .input('tenantId', sql.UniqueIdentifier, tenantId)
+    .input('name', sql.NVarChar, input.name)
+    .input('contactName', sql.NVarChar, input.contactName ?? null)
+    .input('email', sql.NVarChar, input.email ?? null)
+    .input('phone', sql.NVarChar, input.phone ?? null)
+    .input('address', sql.NVarChar, input.address ?? null)
+    .input('taxNumber', sql.NVarChar, input.taxNumber ?? null)
+    .input('taxOffice', sql.NVarChar, input.taxOffice ?? null)
+    .input('notes', sql.NVarChar, input.notes ?? null)
+    .input('isActive', sql.Bit, input.isActive ?? true)
+    .query(`INSERT INTO customers (tenant_id, name, contact_name, email, phone, address, tax_number, tax_office, notes, is_active)
+            OUTPUT INSERTED.id
+            VALUES (@tenantId, @name, @contactName, @email, @phone, @address, @taxNumber, @taxOffice, @notes, @isActive)`);
+  return getCustomer(tenantId, r.recordset[0].id);
 };
-
-// === Update ===
 
 export const updateCustomer = async (
   tenantId: string,
   id: string,
   input: Partial<CustomerInput>,
 ): Promise<CustomerDTO> => {
-  const existing = await getCustomer(tenantId, id);
-  const updateData: Partial<NewCustomer> = {
-    name: input.name?.trim(),
-    contactName: input.contactName,
-    email: input.email,
-    phone: input.phone,
-    address: input.address,
-    taxNumber: input.taxNumber,
-    taxOffice: input.taxOffice,
-    notes: input.notes,
-    isActive: input.isActive,
-    updatedAt: new Date(),
-  };
-  // undefined alanları at
-  Object.keys(updateData).forEach(
-    (k) => updateData[k as keyof Partial<NewCustomer>] === undefined && delete updateData[k as keyof Partial<NewCustomer>],
-  );
-
-  await db
-    .update(customers)
-    .set(updateData)
-    .where(and(eq(customers.id, id), withTenant(customers, tenantId)));
-
-  logger.info({ customerId: id, tenantId, prev: existing.name }, 'Customer updated');
+  const pool = await getPool();
+  await pool.request()
+    .input('tenantId', sql.UniqueIdentifier, tenantId)
+    .input('id', sql.UniqueIdentifier, id)
+    .input('name', sql.NVarChar, input.name ?? null)
+    .input('contactName', sql.NVarChar, input.contactName ?? null)
+    .input('email', sql.NVarChar, input.email ?? null)
+    .input('phone', sql.NVarChar, input.phone ?? null)
+    .input('address', sql.NVarChar, input.address ?? null)
+    .input('taxNumber', sql.NVarChar, input.taxNumber ?? null)
+    .input('taxOffice', sql.NVarChar, input.taxOffice ?? null)
+    .input('notes', sql.NVarChar, input.notes ?? null)
+    .input('isActive', sql.Bit, input.isActive ?? null)
+    .query(`UPDATE customers
+            SET name = COALESCE(@name, name),
+                contact_name = COALESCE(@contactName, contact_name),
+                email = COALESCE(@email, email),
+                phone = COALESCE(@phone, phone),
+                address = COALESCE(@address, address),
+                tax_number = COALESCE(@taxNumber, tax_number),
+                tax_office = COALESCE(@taxOffice, tax_office),
+                notes = COALESCE(@notes, notes),
+                is_active = COALESCE(@isActive, is_active),
+                updated_at = getdate()
+            WHERE id = @id AND tenant_id = @tenantId`);
   return getCustomer(tenantId, id);
 };
 
-// === Delete ===
-
 export const deleteCustomer = async (tenantId: string, id: string): Promise<void> => {
-  const result = await db
-    .delete(customers)
-    .where(and(eq(customers.id, id), withTenant(customers, tenantId)))
-    .returning({ id: customers.id });
-  if (result.length === 0) throw new HttpError(404, 'Müşteri bulunamadı');
-  logger.info({ customerId: id, tenantId }, 'Customer deleted');
-};
-
-// === Bulk operations ===
-
-/**
- * Birden fazla müşteriyi tek seferde ekle (Excel import veya ERP sync için).
- * Dışarıdan çağrılan internal API. Validation minimal — caller
- * sorumludur. Duplicate name+tenant kombinasyonu atlanır.
- */
-export const bulkCreateCustomers = async (
-  tenantId: string,
-  inputs: Array<CustomerInput & { source?: 'manual' | 'excel' | 'erp' }>,
-): Promise<{ added: number; skipped: number }> => {
-  if (inputs.length === 0) return { added: 0, skipped: 0 };
-
-  // Mevcut isimleri al (duplicate detection)
-  const names = inputs.map((i) => i.name.trim()).filter(Boolean);
-  const existingNames = new Set<string>();
-  if (names.length > 0) {
-    const existing = await db
-      .select({ name: customers.name })
-      .from(customers)
-      .where(withTenant(customers, tenantId));
-    for (const e of existing) existingNames.add(e.name);
-  }
-
-  const toInsert: NewCustomer[] = [];
-  let skipped = 0;
-  for (const input of inputs) {
-    const name = input.name?.trim();
-    if (!name) {
-      skipped++;
-      continue;
-    }
-    if (existingNames.has(name)) {
-      skipped++;
-      continue;
-    }
-    toInsert.push({
-      tenantId,
-      name,
-      contactName: input.contactName ?? null,
-      email: input.email ?? null,
-      phone: input.phone ?? null,
-      address: input.address ?? null,
-      taxNumber: input.taxNumber ?? null,
-      taxOffice: input.taxOffice ?? null,
-      erpCustomerId: input.erpCustomerId ?? null,
-      source: input.source ?? 'excel',
-      notes: input.notes ?? null,
-      isActive: input.isActive ?? true,
-    });
-    existingNames.add(name);
-  }
-
-  if (toInsert.length === 0) return { added: 0, skipped };
-
-  // 100'lü chunk
-  const CHUNK_SIZE = 100;
-  for (let i = 0; i < toInsert.length; i += CHUNK_SIZE) {
-    const chunk = toInsert.slice(i, i + CHUNK_SIZE);
-    await db.insert(customers).values(chunk);
-  }
-
-  return { added: toInsert.length, skipped };
+  const pool = await getPool();
+  const r = await pool.request()
+    .input('tenantId', sql.UniqueIdentifier, tenantId)
+    .input('id', sql.UniqueIdentifier, id)
+    .query(`DELETE FROM customers WHERE id = @id AND tenant_id = @tenantId`);
+  if (r.rowsAffected[0] === 0) throw new HttpError(404, 'Musteri bulunamadi');
 };

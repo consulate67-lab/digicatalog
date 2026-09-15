@@ -1,49 +1,41 @@
 /**
- * Demo seed script.
+ * Demo seed script (raw mssql).
  *
  * Calistirma: npx tsx server/scripts/seed-demo.ts
  *
  * Olusturur:
  * - Demo tenant ("Demo Katalog A.S.")
  * - Admin user (demo@digicatalog.local / Demo123!)
- * - 3 kategori (Elektronik, Mobilya, Ofis)
- * - 8 urun (farkli kategorilerde)
+ * - 3 kategori
+ * - 8 urun
  * - 3 musteri
- * - 1 aktif katalog (Demo Katalog) — urunlerin cogunu icerir
+ * - 1 aktif katalog (Demo Ilkbahar Kataloğu)
  *
- * Notlar:
- * - Idempotent: tenant slug varsa skip eder
- * - Urun resimleri placeholder (gercek base64 eklemek icin
- *   urun detay sayfasindan yukleyin)
- * - Production'da calistirmadan once DEMO_TENANT_EMAIL env
- *   ile override edin
+ * Idempotent: tenant slug varsa skip eder.
  */
 
 import 'dotenv/config';
 import bcrypt from 'bcryptjs';
 import sql from 'mssql';
-import { drizzle } from 'drizzle-orm/node-mssql';
-import { eq } from 'drizzle-orm';
-import * as schema from '../src/db/schema';
+import { parseDatabaseUrl } from '../src/config/database';
 import { logger } from '../src/utils/logger';
 
 const DATABASE_URL = process.env.DATABASE_URL;
 if (!DATABASE_URL) {
-  console.error('❌ DATABASE_URL tanımlı değil');
+  console.error('❌ DATABASE_URL tanimli degil');
   process.exit(1);
 }
 
-// mssql://user:pass@host:port/db?encrypt=false&trustServerCertificate=true
-const u = new URL(DATABASE_URL);
+const cfg = parseDatabaseUrl(DATABASE_URL);
 const pool = new sql.ConnectionPool({
-  user: decodeURIComponent(u.username),
-  password: decodeURIComponent(u.password),
-  server: u.hostname,
-  port: u.port ? parseInt(u.port, 10) : 1433,
-  database: u.pathname.replace(/^\/+/, '') || 'DijiCatalog',
+  user: cfg.user,
+  password: cfg.password,
+  server: cfg.server,
+  ...(cfg.port !== null ? { port: cfg.port } : {}),
+  database: cfg.database,
   options: {
-    encrypt: u.searchParams.get('encrypt') === 'true',
-    trustServerCertificate: u.searchParams.get('trustServerCertificate') !== 'false',
+    encrypt: cfg.encrypt,
+    trustServerCertificate: cfg.trustServerCertificate,
     enableArithAbort: true,
   },
   connectionTimeout: 15_000,
@@ -51,17 +43,18 @@ const pool = new sql.ConnectionPool({
   pool: { max: 5, min: 0, idleTimeoutMillis: 30_000 },
 });
 
-const db = drizzle(pool, { schema });
+const CATALOG_FIELD_NAMES = [
+  'sku', 'name', 'description', 'price', 'currency',
+  'category', 'brand', 'unit', 'notes', 'images',
+] as const;
 
-const DEMO_TENANT = {
-  name: 'Demo Katalog A.Ş.',
-  slug: 'demo',
-};
+const DEMO_TENANT = { name: 'Demo Katalog A.S.', slug: 'demo' };
 const DEMO_USER = {
   email: process.env.DEMO_TENANT_EMAIL ?? 'demo@digicatalog.local',
   password: process.env.DEMO_TENANT_PASSWORD ?? 'Demo123!',
   name: 'Demo Admin',
 };
+
 const DEMO_CATEGORIES = [
   { name: 'Elektronik', slug: 'elektronik' },
   { name: 'Mobilya', slug: 'mobilya' },
@@ -69,273 +62,187 @@ const DEMO_CATEGORIES = [
 ];
 
 const DEMO_PRODUCTS = [
-  {
-    sku: 'LAP-DEMO-01',
-    name: 'Demo Laptop 14"',
-    description: '14 inç ekran, 16GB RAM, 512GB SSD. Demo amaçlıdır.',
-    price: '24999.00',
-    categorySlug: 'elektronik',
-    brand: 'DemoBrand',
-    unit: 'adet',
-  },
-  {
-    sku: 'TEL-DEMO-01',
-    name: 'Demo Akıllı Telefon 128GB',
-    description: '6.5 inç ekran, 128GB depolama. Demo amaçlıdır.',
-    price: '18999.00',
-    categorySlug: 'elektronik',
-    brand: 'DemoMobile',
-    unit: 'adet',
-  },
-  {
-    sku: 'KUL-DEMO-01',
-    name: 'Demo Kablosuz Kulaklık',
-    description: 'Bluetooth, gürültü engelleme. Demo amaçlıdır.',
-    price: '2499.00',
-    categorySlug: 'elektronik',
-    brand: 'DemoSound',
-    unit: 'adet',
-  },
-  {
-    sku: 'MZD-DEMO-01',
-    name: 'Demo Çalışma Masası',
-    description: '120x60cm, meşe kaplama. Demo amaçlıdır.',
-    price: '5999.00',
-    categorySlug: 'mobilya',
-    brand: 'DemoWood',
-    unit: 'adet',
-  },
-  {
-    sku: 'SNK-DEMO-01',
-    name: 'Demo Ofis Sandalyesi',
-    description: 'Ergonomik, ayarlanabilir yükseklik. Demo amaçlıdır.',
-    price: '3499.00',
-    categorySlug: 'mobilya',
-    brand: 'DemoComfort',
-    unit: 'adet',
-  },
-  {
-    sku: 'DLR-DEMO-01',
-    name: 'Demo Dosya Dolabı',
-    description: '4 çekmeceli, metal. Demo amaçlıdır.',
-    price: '2299.00',
-    categorySlug: 'mobilya',
-    brand: 'DemoOffice',
-    unit: 'adet',
-  },
-  {
-    sku: 'YK-DEMO-01',
-    name: 'Demo Yazıcı',
-    description: 'Renkli lazer, A4. Demo amaçlıdır.',
-    price: '4999.00',
-    categorySlug: 'ofis',
-    brand: 'DemoPrint',
-    unit: 'adet',
-  },
-  {
-    sku: 'KLT-DEMO-01',
-    name: 'Demo Monitör 27"',
-    description: '4K IPS, HDMI+DP. Demo amaçlıdır.',
-    price: '7999.00',
-    categorySlug: 'elektronik',
-    brand: 'DemoDisplay',
-    unit: 'adet',
-  },
+  { sku: 'LAP-DEMO-01', name: 'Demo Laptop 14"', description: '14 inc ekran, 16GB RAM, 512GB SSD. Demo amaclidir.', price: 24999.00, categorySlug: 'elektronik', brand: 'DemoBrand', unit: 'adet' },
+  { sku: 'TEL-DEMO-01', name: 'Demo Akilli Telefon 128GB', description: '6.5 inc ekran, 128GB depolama. Demo amaclidir.', price: 18999.00, categorySlug: 'elektronik', brand: 'DemoMobile', unit: 'adet' },
+  { sku: 'KUL-DEMO-01', name: 'Demo Kablosuz Kulaklik', description: 'Bluetooth, gurultu engelleme. Demo amaclidir.', price: 2499.00, categorySlug: 'elektronik', brand: 'DemoSound', unit: 'adet' },
+  { sku: 'MZD-DEMO-01', name: 'Demo Calisma Masasi', description: '120x60cm, mese kaplama. Demo amaclidir.', price: 5999.00, categorySlug: 'mobilya', brand: 'DemoWood', unit: 'adet' },
+  { sku: 'SNK-DEMO-01', name: 'Demo Ofis Sandalyesi', description: 'Ergonomik, ayarlanabilir yukseklik. Demo amaclidir.', price: 3499.00, categorySlug: 'mobilya', brand: 'DemoComfort', unit: 'adet' },
+  { sku: 'DLR-DEMO-01', name: 'Demo Dosya Dolabi', description: '4 cekmeceli, metal. Demo amaclidir.', price: 2299.00, categorySlug: 'mobilya', brand: 'DemoOffice', unit: 'adet' },
+  { sku: 'YK-DEMO-01', name: 'Demo Yazici', description: 'Renkli lazer, A4. Demo amaclidir.', price: 4999.00, categorySlug: 'ofis', brand: 'DemoPrint', unit: 'adet' },
+  { sku: 'KLT-DEMO-01', name: 'Demo Monitor 27"', description: '4K IPS, HDMI+DP. Demo amaclidir.', price: 7999.00, categorySlug: 'elektronik', brand: 'DemoDisplay', unit: 'adet' },
 ];
 
 const DEMO_CUSTOMERS = [
-  {
-    name: 'Acme Tekstil Ltd.',
-    contactName: 'Mehmet Yılmaz',
-    email: 'info@acme-demo.com',
-    phone: '+90 212 555 0001',
-    taxNumber: '1111111111',
-    taxOffice: 'Beşiktaş',
-  },
-  {
-    name: 'Beta Mühendislik A.Ş.',
-    contactName: 'Ayşe Kaya',
-    email: 'ayse@beta-demo.com',
-    phone: '+90 532 111 0002',
-    taxNumber: '2222222222',
-    taxOffice: 'Çankaya',
-  },
-  {
-    name: 'Gamma Ltd. Şti.',
-    contactName: 'Ali Demir',
-    phone: '+90 555 999 0003',
-    address: 'Demo Adres 3, İzmir',
-  },
+  { name: 'Acme Tekstil Ltd.', contactName: 'Mehmet Yilmaz', email: 'info@acme-demo.com', phone: '+90 212 555 0001', taxNumber: '1111111111', taxOffice: 'Besiktas' },
+  { name: 'Beta Muhendislik A.S.', contactName: 'Ayse Kaya', email: 'ayse@beta-demo.com', phone: '+90 532 111 0002', taxNumber: '2222222222', taxOffice: 'Cankaya' },
+  { name: 'Gamma Ltd. Sti.', contactName: 'Ali Demir', phone: '+90 555 999 0003', address: 'Demo Adres 3, Izmir' },
 ];
 
 const main = async (): Promise<void> => {
-  logger.info('🌱 Demo seed başlıyor...');
+  logger.info('Demo seed basliyor...');
+  await pool.connect();
 
   // === Tenant ===
-  const [existingTenant] = await db
-    .select()
-    .from(schema.tenants)
-    .where(eq(schema.tenants.slug, DEMO_TENANT.slug))
-    .limit(1);
-
+  const tenantR = await pool.request()
+    .input('slug', sql.NVarChar, DEMO_TENANT.slug)
+    .query(`SELECT id FROM tenants WHERE slug = @slug`);
   let tenantId: string;
-  if (existingTenant) {
-    logger.info({ tenant: existingTenant.slug }, 'Tenant zaten var, atlanıyor');
-    tenantId = existingTenant.id;
+  if (tenantR.recordset[0]) {
+    tenantId = tenantR.recordset[0].id;
+    logger.info({ tenant: DEMO_TENANT.slug }, 'Tenant zaten var, atlanıyor');
   } else {
-    const [tenant] = await db
-      .insert(schema.tenants)
-      .values({ name: DEMO_TENANT.name, slug: DEMO_TENANT.slug })
-      .returning();
-    tenantId = tenant.id;
-    logger.info({ tenantId, slug: tenant.slug }, '✅ Tenant oluşturuldu');
+    const r = await pool.request()
+      .input('name', sql.NVarChar, DEMO_TENANT.name)
+      .input('slug', sql.NVarChar, DEMO_TENANT.slug)
+      .query(`INSERT INTO tenants (name, slug) OUTPUT INSERTED.id VALUES (@name, @slug)`);
+    tenantId = r.recordset[0].id;
+    logger.info({ tenantId, slug: DEMO_TENANT.slug }, 'Tenant olusturuldu');
   }
 
   // === Admin user ===
-  const [existingUser] = await db
-    .select()
-    .from(schema.users)
-    .where(eq(schema.users.email, DEMO_USER.email))
-    .limit(1);
-
-  if (!existingUser) {
+  const userR = await pool.request()
+    .input('email', sql.NVarChar, DEMO_USER.email)
+    .query(`SELECT id FROM users WHERE email = @email`);
+  if (!userR.recordset[0]) {
     const passwordHash = await bcrypt.hash(DEMO_USER.password, 10);
-    await db.insert(schema.users).values({
-      tenantId,
-      email: DEMO_USER.email,
-      passwordHash,
-      name: DEMO_USER.name,
-      role: 'admin',
-    });
-    logger.info({ email: DEMO_USER.email }, '✅ Admin user oluşturuldu');
+    await pool.request()
+      .input('tenantId', sql.UniqueIdentifier, tenantId)
+      .input('email', sql.NVarChar, DEMO_USER.email)
+      .input('passwordHash', sql.NVarChar, passwordHash)
+      .input('name', sql.NVarChar, DEMO_USER.name)
+      .query(`INSERT INTO users (tenant_id, email, password_hash, name, role)
+              VALUES (@tenantId, @email, @passwordHash, @name, 'admin')`);
+    logger.info({ email: DEMO_USER.email }, 'Admin user olusturuldu');
   } else {
     logger.info({ email: DEMO_USER.email }, 'User zaten var, atlanıyor');
   }
 
   // === Categories ===
   const categoryMap = new Map<string, string>();
-  const existingCats = await db
-    .select()
-    .from(schema.categories)
-    .where(eq(schema.categories.tenantId, tenantId));
-  for (const c of existingCats) categoryMap.set(c.slug, c.id);
+  const catR = await pool.request()
+    .input('tenantId', sql.UniqueIdentifier, tenantId)
+    .query(`SELECT id, slug FROM categories WHERE tenant_id = @tenantId`);
+  for (const c of catR.recordset) categoryMap.set(c.slug, c.id);
+
   for (const c of DEMO_CATEGORIES) {
     if (categoryMap.has(c.slug)) continue;
-    const [created] = await db
-      .insert(schema.categories)
-      .values({ tenantId, name: c.name, slug: c.slug })
-      .returning();
-    categoryMap.set(c.slug, created.id);
+    const r = await pool.request()
+      .input('tenantId', sql.UniqueIdentifier, tenantId)
+      .input('name', sql.NVarChar, c.name)
+      .input('slug', sql.NVarChar, c.slug)
+      .query(`INSERT INTO categories (tenant_id, name, slug) OUTPUT INSERTED.id VALUES (@tenantId, @name, @slug)`);
+    categoryMap.set(c.slug, r.recordset[0].id);
   }
-  logger.info({ count: categoryMap.size }, '✅ Kategoriler hazır');
+  logger.info({ count: categoryMap.size }, 'Kategoriler hazir');
 
   // === Products ===
-  const existingProducts = await db
-    .select()
-    .from(schema.products)
-    .where(eq(schema.products.tenantId, tenantId));
-  if (existingProducts.length === 0) {
+  const prodR = await pool.request()
+    .input('tenantId', sql.UniqueIdentifier, tenantId)
+    .query(`SELECT COUNT(*) AS c FROM products WHERE tenant_id = @tenantId`);
+  const existingProdCount = prodR.recordset[0].c;
+  if (existingProdCount === 0) {
     for (const p of DEMO_PRODUCTS) {
-      await db.insert(schema.products).values({
-        tenantId,
-        sku: p.sku,
-        name: p.name,
-        description: p.description,
-        price: p.price,
-        currency: 'TRY',
-        categoryId: categoryMap.get(p.categorySlug) ?? null,
-        brand: p.brand,
-        unit: p.unit,
-        isActive: true,
-      });
+      await pool.request()
+        .input('tenantId', sql.UniqueIdentifier, tenantId)
+        .input('sku', sql.NVarChar, p.sku)
+        .input('name', sql.NVarChar, p.name)
+        .input('description', sql.NVarChar, p.description)
+        .input('price', sql.Decimal(12, 2), String(p.price))
+        .input('currency', sql.NVarChar, 'TRY')
+        .input('categoryId', sql.UniqueIdentifier, categoryMap.get(p.categorySlug) ?? null)
+        .input('brand', sql.NVarChar, p.brand)
+        .input('unit', sql.NVarChar, p.unit)
+        .query(`INSERT INTO products (tenant_id, sku, name, description, price, currency, category_id, brand, unit, is_active)
+                VALUES (@tenantId, @sku, @name, @description, @price, @currency, @categoryId, @brand, @unit, 1)`);
     }
-    logger.info({ count: DEMO_PRODUCTS.length }, '✅ Ürünler oluşturuldu');
+    logger.info({ count: DEMO_PRODUCTS.length }, 'Urunler olusturuldu');
   } else {
-    logger.info({ count: existingProducts.length }, 'Ürünler zaten var, atlanıyor');
+    logger.info({ count: existingProdCount }, 'Urunler zaten var, atlanıyor');
   }
 
   // === Customers ===
-  const existingCustomers = await db
-    .select()
-    .from(schema.customers)
-    .where(eq(schema.customers.tenantId, tenantId));
-  if (existingCustomers.length === 0) {
+  const custR = await pool.request()
+    .input('tenantId', sql.UniqueIdentifier, tenantId)
+    .query(`SELECT COUNT(*) AS c FROM customers WHERE tenant_id = @tenantId`);
+  const existingCustCount = custR.recordset[0].c;
+  if (existingCustCount === 0) {
     for (const c of DEMO_CUSTOMERS) {
-      await db.insert(schema.customers).values({ tenantId, ...c, isActive: true });
+      await pool.request()
+        .input('tenantId', sql.UniqueIdentifier, tenantId)
+        .input('name', sql.NVarChar, c.name)
+        .input('contactName', sql.NVarChar, c.contactName ?? null)
+        .input('email', sql.NVarChar, c.email ?? null)
+        .input('phone', sql.NVarChar, c.phone ?? null)
+        .input('address', sql.NVarChar, c.address ?? null)
+        .input('taxNumber', sql.NVarChar, c.taxNumber ?? null)
+        .input('taxOffice', sql.NVarChar, c.taxOffice ?? null)
+        .query(`INSERT INTO customers (tenant_id, name, contact_name, email, phone, address, tax_number, tax_office, is_active)
+                VALUES (@tenantId, @name, @contactName, @email, @phone, @address, @taxNumber, @taxOffice, 1)`);
     }
-    logger.info({ count: DEMO_CUSTOMERS.length }, '✅ Müşteriler oluşturuldu');
+    logger.info({ count: DEMO_CUSTOMERS.length }, 'Musteriler olusturuldu');
   } else {
-    logger.info({ count: existingCustomers.length }, 'Müşteriler zaten var, atlanıyor');
+    logger.info({ count: existingCustCount }, 'Musteriler zaten var, atlanıyor');
   }
 
   // === Sample catalog ===
-  const [existingCatalog] = await db
-    .select()
-    .from(schema.catalogs)
-    .where(eq(schema.catalogs.tenantId, tenantId))
-    .limit(1);
-  if (!existingCatalog) {
-    const allProducts = await db
-      .select()
-      .from(schema.products)
-      .where(eq(schema.products.tenantId, tenantId));
-    const allCustomers = await db
-      .select()
-      .from(schema.customers)
-      .where(eq(schema.customers.tenantId, tenantId));
+  const catalogR = await pool.request()
+    .input('tenantId', sql.UniqueIdentifier, tenantId)
+    .query(`SELECT id FROM catalogs WHERE tenant_id = @tenantId`);
+  if (!catalogR.recordset[0]) {
+    const productsR = await pool.request()
+      .input('tenantId', sql.UniqueIdentifier, tenantId)
+      .query(`SELECT id FROM products WHERE tenant_id = @tenantId ORDER BY name`);
+    const customersR = await pool.request()
+      .input('tenantId', sql.UniqueIdentifier, tenantId)
+      .query(`SELECT id FROM customers WHERE tenant_id = @tenantId`);
 
-    const [catalog] = await db
-      .insert(schema.catalogs)
-      .values({
-        tenantId,
-        name: 'Demo İlkbahar Kataloğu',
-        description: 'Demo amaçlı oluşturulmuş örnek katalog. Müşteri ziyaretinde açıp gösterebilirsiniz.',
-        status: 'active',
-      })
-      .returning();
+    const cR = await pool.request()
+      .input('tenantId', sql.UniqueIdentifier, tenantId)
+      .input('name', sql.NVarChar, 'Demo Ilkbahar Kataloğu')
+      .input('description', sql.NVarChar, 'Demo amacli olusturulmus ornek katalog. Musteri ziyaretinde acip gosterebilirsiniz.')
+      .query(`INSERT INTO catalogs (tenant_id, name, description, status)
+              OUTPUT INSERTED.id VALUES (@tenantId, @name, @description, 'active')`);
+    const catalogId = cR.recordset[0].id;
 
-    // Tüm ürünleri ekle
-    for (let i = 0; i < allProducts.length; i++) {
-      await db.insert(schema.catalogItems).values({
-        catalogId: catalog.id,
-        productId: allProducts[i].id,
-        sortOrder: i,
-      });
+    for (let i = 0; i < productsR.recordset.length; i++) {
+      await pool.request()
+        .input('catalogId', sql.UniqueIdentifier, catalogId)
+        .input('productId', sql.UniqueIdentifier, productsR.recordset[i].id)
+        .input('sortOrder', sql.Int, i)
+        .query(`INSERT INTO catalog_items (catalog_id, product_id, sort_order)
+                VALUES (@catalogId, @productId, @sortOrder)`);
     }
-    // Tüm müşterileri ata
-    for (const c of allCustomers) {
-      await db.insert(schema.catalogCustomers).values({
-        catalogId: catalog.id,
-        customerId: c.id,
-      });
+    for (const c of customersR.recordset) {
+      await pool.request()
+        .input('catalogId', sql.UniqueIdentifier, catalogId)
+        .input('customerId', sql.UniqueIdentifier, c.id)
+        .query(`INSERT INTO catalog_customers (catalog_id, customer_id)
+                VALUES (@catalogId, @customerId)`);
     }
-    // Default field config
-    for (let i = 0; i < schema.CATALOG_FIELD_NAMES.length; i++) {
-      await db.insert(schema.catalogFieldConfig).values({
-        catalogId: catalog.id,
-        fieldName: schema.CATALOG_FIELD_NAMES[i],
-        isVisible: true,
-        sortOrder: i,
-      });
+    for (let i = 0; i < CATALOG_FIELD_NAMES.length; i++) {
+      await pool.request()
+        .input('catalogId', sql.UniqueIdentifier, catalogId)
+        .input('fieldName', sql.NVarChar, CATALOG_FIELD_NAMES[i])
+        .input('sortOrder', sql.Int, i)
+        .query(`INSERT INTO catalog_field_config (catalog_id, field_name, is_visible, sort_order)
+                VALUES (@catalogId, @fieldName, 1, @sortOrder)`);
     }
-
-    logger.info(
-      { catalogId: catalog.id, products: allProducts.length, customers: allCustomers.length },
-      '✅ Demo katalog oluşturuldu (active)',
-    );
+    logger.info({ catalogId }, 'Demo katalog olusturuldu');
+  } else {
+    logger.info('Catalog zaten var, atlanıyor');
   }
 
-  logger.info('🎉 Demo seed tamamlandı!');
+  logger.info('Demo seed tamamlandi!');
   logger.info(
     { email: DEMO_USER.email, password: DEMO_USER.password },
-    'Giriş bilgileri',
+    'Giris bilgileri',
   );
 
   await pool.close();
 };
 
-main().catch((err) => {
-  console.error('❌ Seed hatası:', err);
-  pool.close().catch(() => undefined);
+main().catch(async (err) => {
+  console.error('Seed hatasi:', err);
+  try { await pool.close(); } catch (_e) { /* ignore */ }
   process.exit(1);
 });
