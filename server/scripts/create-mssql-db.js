@@ -68,21 +68,29 @@ async function main() {
     pool = await sql.connect(config);
     console.log('[create-db] master DB bağlantısı kuruldu');
 
+    const dbName = database;
+    if (!/^[A-Za-z_][A-Za-z0-9_]{0,63}$/.test(dbName)) {
+      throw new Error(`Geçersiz DB adı: ${dbName}`);
+    }
+
+    // --drop: once drop et (yarim kalan FK'lardan kurtulmak icin)
+    if (args.drop) {
+      console.log(`[create-db] --drop: '${dbName}' once drop edilecek`);
+      await pool.request().query(`IF DB_ID('${dbName}') IS NOT NULL BEGIN ALTER DATABASE [${dbName}] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE [${dbName}]; END`);
+      console.log(`[create-db] '${dbName}' dropped`);
+    }
+
     // DB var mı kontrol et, yoksa oluştur
     const checkResult = await pool.request()
-      .input('dbName', sql.NVarChar, database)
+      .input('dbName', sql.NVarChar, dbName)
       .query(`SELECT DB_ID(@dbName) AS id`);
     const exists = checkResult.recordset[0]?.id;
 
     if (exists) {
-      console.log(`[create-db] '${database}' DB zaten mevcut, atlanıyor`);
+      console.log(`[create-db] '${dbName}' DB zaten mevcut, atlanıyor`);
     } else {
-      // CREATE DATABASE için identifiers güvenli mi?
-      if (!/^[A-Za-z_][A-Za-z0-9_]{0,63}$/.test(database)) {
-        throw new Error(`Geçersiz DB adı: ${database}`);
-      }
-      await pool.request().query(`CREATE DATABASE [${database}]`);
-      console.log(`[create-db] '${database}' DB oluşturuldu`);
+      await pool.request().query(`CREATE DATABASE [${dbName}]`);
+      console.log(`[create-db] '${dbName}' DB oluşturuldu`);
     }
   } catch (err) {
     console.error('[create-db] Hata:', err.message);
