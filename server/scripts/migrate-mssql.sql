@@ -230,14 +230,15 @@ IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'fk_categories_tenant
 IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'fk_products_tenant')
   ALTER TABLE products ADD CONSTRAINT fk_products_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
 
-IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'fk_products_category')
-  ALTER TABLE products ADD CONSTRAINT fk_products_category FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE SET NULL;
+-- products.category_id, product_images.product_id, catalogs.created_by,
+-- catalog_items.*, catalog_customers.*, catalog_field_config.catalog_id
+-- FK'lari MSSEL'de cycle yarattigi icin (MSSQL No 1750 'See previous errors',
+-- SET NULL bile reddedildi) kaldirildi. Tenant FK'lari korundu.
+-- Referans integrity uygulama katmaninda (services/*) kontrol edilir;
+-- Drizzle ORM runtime'da metadata'da FK'lari gormeye devam eder.
 
 IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'fk_product_images_tenant')
   ALTER TABLE product_images ADD CONSTRAINT fk_product_images_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
-
-IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'fk_product_images_product')
-  ALTER TABLE product_images ADD CONSTRAINT fk_product_images_product FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE;
 
 IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'fk_customers_tenant')
   ALTER TABLE customers ADD CONSTRAINT fk_customers_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
@@ -245,23 +246,6 @@ IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'fk_customers_tenant'
 IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'fk_catalogs_tenant')
   ALTER TABLE catalogs ADD CONSTRAINT fk_catalogs_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
 
-IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'fk_catalogs_user')
-  ALTER TABLE catalogs ADD CONSTRAINT fk_catalogs_user FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL;
-
--- catalog_items: CYCLE onleyici — SET NULL (parent katalog/urun silinince satir kalir ama ref NULL)
-IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'fk_catalog_items_catalog')
-  ALTER TABLE catalog_items ADD CONSTRAINT fk_catalog_items_catalog FOREIGN KEY (catalog_id) REFERENCES catalogs(id) ON DELETE SET NULL;
-IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'fk_catalog_items_product')
-  ALTER TABLE catalog_items ADD CONSTRAINT fk_catalog_items_product FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE SET NULL;
-
--- catalog_customers: SET NULL (catalog ve customer silinince ref NULL olur)
-IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'fk_catalog_customers_catalog')
-  ALTER TABLE catalog_customers ADD CONSTRAINT fk_catalog_customers_catalog FOREIGN KEY (catalog_id) REFERENCES catalogs(id) ON DELETE SET NULL;
-IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'fk_catalog_customers_customer')
-  ALTER TABLE catalog_customers ADD CONSTRAINT fk_catalog_customers_customer FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE SET NULL;
-
--- catalog_field_config: SET NULL (catalog silinince ref NULL)
-IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'fk_catalog_field_config_catalog')
-  ALTER TABLE catalog_field_config ADD CONSTRAINT fk_catalog_field_config_catalog FOREIGN KEY (catalog_id) REFERENCES catalogs(id) ON DELETE SET NULL;
+PRINT 'DijiCatalog schema (MSSEL-first): 10 tablo + 18 index + tenant FK olusturuldu.';
 
 PRINT 'DijiCatalog schema (MSSEL-first): 10 tablo + 18 index + 13 FK olusturuldu.';
