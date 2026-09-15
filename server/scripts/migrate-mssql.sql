@@ -54,13 +54,16 @@ CREATE TABLE categories (
   updated_at datetime2 NOT NULL DEFAULT (getdate()),
   CONSTRAINT pk_categories PRIMARY KEY (id),
   CONSTRAINT uq_categories_tenant_slug UNIQUE (tenant_id, slug),
-  CONSTRAINT fk_categories_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
-  CONSTRAINT fk_categories_parent FOREIGN KEY (parent_id) REFERENCES categories(id) ON DELETE CASCADE
+  CONSTRAINT fk_categories_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE
 );
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'categories_tenant_idx' AND object_id = OBJECT_ID('categories'))
   CREATE INDEX categories_tenant_idx ON categories(tenant_id);
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'categories_parent_idx' AND object_id = OBJECT_ID('categories'))
   CREATE INDEX categories_parent_idx ON categories(parent_id);
+-- Self-referencing FK (parent_id) CREATE TABLE sirasinda MSSEL'de sikinti cikarir (MSSQL No 1750);
+-- tablo olustuktan sonra ALTER TABLE ile ekliyoruz.
+IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = 'fk_categories_parent')
+  ALTER TABLE categories ADD CONSTRAINT fk_categories_parent FOREIGN KEY (parent_id) REFERENCES categories(id) ON DELETE CASCADE;
 
 -- === products ===
 IF OBJECT_ID('products', 'U') IS NULL
