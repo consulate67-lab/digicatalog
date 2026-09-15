@@ -6,8 +6,8 @@
  * Drizzle Kit henuz mssql dialect'i desteklemedigi icin bu script
  * migrate-mssql.sql dosyasini node-mssql ile calistirir.
  *
- * SQL dosyasi GO separator ile batch'lere ayrilir ve her batch
- * ayri execute edilir. Idempotent (IF OBJECT_ID kontrolleri).
+ * SQL dosyasi GO separator ile batch'lere ayrilir; yoksa statement
+ * bazli (;) parcalanir. Her batch ayri execute edilir (idempotent).
  *
  * Kullanim:
  *   node scripts/apply-migration.js --server localhost --instance ABKA --user sa --password 'xxx' --database DijiCatalog
@@ -36,6 +36,51 @@ function parseArgs() {
   return args;
 }
 
+/**
+ * SQL dosyasini batch'lere ayir.
+ * - GO separator varsa onu kullan
+ * - yoksa statement bazli (;) parcala, yorum ve bos satirlari atla
+ */
+function splitBatches(sqlText) {
+  // Once GO ile dene
+  const goSplit = sqlText.split(/^\s*GO\s*$/gim).map((b) => b.trim()).filter(Boolean);
+  if (goSplit.length > 1) return goSplit;
+
+  // GO yoksa statement bazli parcala
+  const statements = [];
+  let buf = [];
+  let inMultilineComment = false;
+  for (const line of sqlText.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    // Bos satir
+    if (!trimmed) continue;
+    // Yorum
+    if (trimmed.startsWith('--')) continue;
+    // Multi-line comment (/* ... */)
+    if (trimmed.startsWith('/*')) {
+      inMultilineComment = !trimmed.includes('*/');
+      continue;
+    }
+    if (inMultilineComment) {
+      if (trimmed.includes('*/')) inMultilineComment = false;
+      continue;
+    }
+    buf.push(line);
+    // Statement ; ile bitiyorsa bitir
+    if (trimmed.endsWith(';')) {
+      const stmt = buf.join('\n').trim();
+      if (stmt) statements.push(stmt);
+      buf = [];
+    }
+  }
+  // Son ; yoksa kalan buffer
+  if (buf.length > 0) {
+    const stmt = buf.join('\n').trim();
+    if (stmt) statements.push(stmt);
+  }
+  return statements;
+}
+
 async function main() {
   const args = parseArgs();
   const server = args.server || process.env.MSSQL_SERVER || 'localhost';
@@ -45,18 +90,13 @@ async function main() {
   const database = args.database || process.env.MSSQL_DATABASE || 'DijiCatalog';
   const instance = args.instance || process.env.MSSQL_INSTANCE;
 
-  // SQL dosyasi
   const sqlPath = path.join(__dirname, 'migrate-mssql.sql');
   if (!fs.existsSync(sqlPath)) {
     console.error('[migrate] migrate-mssql.sql bulunamadi:', sqlPath);
     process.exit(1);
   }
   const sqlText = fs.readFileSync(sqlPath, 'utf8');
-  // GO separator ile batch'lere ayir (case-insensitive, satir basi)
-  const batches = sqlText
-    .split(/^\s*GO\s*$/gim)
-    .map((b) => b.trim())
-    .filter((b) => b.length > 0);
+  const batches = splitBatches(sqlText);
 
   console.log(`[migrate] Sunucu: ${instance ? server + '\\' + instance : server}${port ? ':' + port : ''}`);
   console.log(`[migrate] Hedef DB: ${database}`);
@@ -85,18 +125,20 @@ async function main() {
     let okCount = 0;
     for (let i = 0; i < batches.length; i++) {
       const batch = batches[i];
-      // Ilk satirdan yorumu temizle (PRINT bilgi verir)
-      const firstLine = batch.split('\n')[0].trim();
+      const firstLine = batch.split('\n').find((l) => l.trim() && !l.trim().startsWith('--')) || batch;
+      const preview = firstLine.substring(0, 80).replace(/\s+/g, ' ').trim();
       try {
-        await pool.request().batch(batch);
-        console.log(`[migrate] Batch ${i + 1}/${batches.length} OK (${firstLine.substring(0, 60)})`);
+        await pool.request().query(batch);
+        console.log(`[migrate] ${String(i + 1).padStart(2)}/${batches.length} OK  ${preview}`);
         okCount++;
       } catch (err) {
-        console.error(`[migrate] Batch ${i + 1}/${batches.length} HATA:`);
-        console.error(`  Mesaj: ${err.message}`);
-        console.error(`  Ilk satir: ${firstLine}`);
-        console.error(`  Batch:`);
-        console.error(batch.split('\n').map((l) => '    ' + l).join('\n'));
+        console.error(`[migrate] ${String(i + 1).padStart(2)}/${batches.length} HATA: ${err.message}`);
+        console.error(`[migrate]    SQL: ${preview}`);
+        if (err.number) console.error(`[migrate]    MSSQL No: ${err.number}`);
+        if (err.lineNumber) console.error(`[migrate]    Satir: ${err.lineNumber}`);
+        // Tum batch'i goster ki kullanici hangi statement'ta hata aldigini gor
+        console.error('[migrate]    Batch:');
+        batch.split('\n').forEach((l) => console.error('[migrate]      ' + l));
         process.exitCode = 1;
         return;
       }
@@ -104,7 +146,6 @@ async function main() {
 
     console.log(`[migrate] ${okCount}/${batches.length} batch basariyla calistirildi`);
 
-    // Olusturulan tablolari dogrula
     const verifyResult = await pool.request()
       .input('dbName', sql.NVarChar, database)
       .query(`SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_TYPE = 'BASE TABLE' AND TABLE_NAME IN ('tenants','users','categories','products','product_images','customers','catalogs','catalog_items','catalog_customers','catalog_field_config') ORDER BY TABLE_NAME`);

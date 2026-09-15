@@ -1,4 +1,4 @@
--- DijiCatalog MSSQL schema migration
+﻿-- DijiCatalog MSSQL schema migration
 -- Drizzle Kit henuz mssql dialect'i desteklemedigi icin manuel SQL.
 -- Drizzle ORM runtime'da (drizzle-orm/node-mssql) bu tablolari kullanir.
 
