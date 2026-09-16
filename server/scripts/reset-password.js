@@ -45,7 +45,10 @@ async function main() {
     user, password, server,
     ...(port ? { port } : {}),
     database,
-    options: { encrypt: false, trustServerCertificate: true, enableArithAbort: true },
+    options: {
+      encrypt: false, trustServerCertificate: true, enableArithAbort: true,
+      ...(instance ? { instanceName: instance } : {}),
+    },
     connectionTimeout: 15_000,
     requestTimeout: 60_000,
   };

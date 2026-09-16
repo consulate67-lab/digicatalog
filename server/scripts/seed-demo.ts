@@ -27,17 +27,19 @@ if (!DATABASE_URL) {
 }
 
 const cfg = parseDatabaseUrl(DATABASE_URL);
+const poolOptions = {
+  encrypt: cfg.encrypt,
+  trustServerCertificate: cfg.trustServerCertificate,
+  enableArithAbort: true,
+  ...(cfg.instanceName !== null ? { instanceName: cfg.instanceName } : {}),
+};
 const pool = new sql.ConnectionPool({
   user: cfg.user,
   password: cfg.password,
   server: cfg.server,
   ...(cfg.port !== null ? { port: cfg.port } : {}),
   database: cfg.database,
-  options: {
-    encrypt: cfg.encrypt,
-    trustServerCertificate: cfg.trustServerCertificate,
-    enableArithAbort: true,
-  },
+  options: poolOptions,
   connectionTimeout: 15_000,
   requestTimeout: 60_000,
   pool: { max: 5, min: 0, idleTimeoutMillis: 30_000 },

@@ -21,6 +21,7 @@ interface ParsedDbConfig {
   password: string;
   server: string;
   port: number | null;
+  instanceName: string | null;
   database: string;
   encrypt: boolean;
   trustServerCertificate: boolean;
@@ -38,13 +39,31 @@ export const parseDatabaseUrl = (url: string): ParsedDbConfig => {
   const database = m[4] || 'DijiCatalog';
   const queryStr = m[5] || '';
 
-  // hostPart: 'host', 'host:port', 'host\INSTANCE', veya 'host\INSTANCE:dynamic'
+  // hostPart formlari:
+  //   - 'host'                  -> default instance, port 1433
+  //   - 'host:port'             -> custom port (ornek: 49746)
+  //   - 'host\INSTANCE'         -> named instance (SQL Browser dynamic port)
+  //   - 'host\INSTANCE:port'    -> named instance + explicit port (nadir)
   let server = hostPart;
   let port: number | null = null;
+  let instanceName: string | null = null;
   if (hostPart.includes('\\')) {
-    // Named instance — port SQL Browser tarafindan cozumlenir (mssql package direkt port kullanmaz)
-    server = hostPart;
-    port = null;
+    // Named instance — host ile instanceName'i ayir, port yoksa SQL Browser'a birak
+    const backslashIdx = hostPart.indexOf('\\');
+    const afterInstance = hostPart.slice(backslashIdx + 1);
+    const colonAfterInstance = afterInstance.indexOf(':');
+    if (colonAfterInstance > 0) {
+      // host\INSTANCE:port formu
+      server = hostPart.slice(0, backslashIdx);
+      instanceName = afterInstance.slice(0, colonAfterInstance);
+      const p = parseInt(afterInstance.slice(colonAfterInstance + 1), 10);
+      if (!isNaN(p)) port = p;
+    } else {
+      // host\INSTANCE formu (en yaygin)
+      server = hostPart.slice(0, backslashIdx);
+      instanceName = afterInstance;
+      port = null;
+    }
   } else {
     const colonIdx = hostPart.lastIndexOf(':');
     if (colonIdx > 0) {
@@ -63,6 +82,7 @@ export const parseDatabaseUrl = (url: string): ParsedDbConfig => {
     password,
     server,
     port,
+    instanceName,
     database,
     encrypt,
     trustServerCertificate,
@@ -71,17 +91,20 @@ export const parseDatabaseUrl = (url: string): ParsedDbConfig => {
 
 const cfg = parseDatabaseUrl(env.DATABASE_URL);
 
+const basePoolOptions = {
+  encrypt: cfg.encrypt,
+  trustServerCertificate: cfg.trustServerCertificate,
+  enableArithAbort: true,
+  ...(cfg.instanceName !== null ? { instanceName: cfg.instanceName } : {}),
+};
+
 const basePoolConfig: sql.config = {
   user: cfg.user,
   password: cfg.password,
   server: cfg.server,
   ...(cfg.port !== null ? { port: cfg.port } : {}),
   database: cfg.database,
-  options: {
-    encrypt: cfg.encrypt,
-    trustServerCertificate: cfg.trustServerCertificate,
-    enableArithAbort: true,
-  },
+  options: basePoolOptions,
   connectionTimeout: 15_000,
   requestTimeout: 60_000,
   pool: {

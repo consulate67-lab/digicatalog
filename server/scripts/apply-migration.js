@@ -112,6 +112,7 @@ async function main() {
       encrypt: false,
       trustServerCertificate: true,
       enableArithAbort: true,
+      ...(instance ? { instanceName: instance } : {}),
     },
     connectionTimeout: 15_000,
     requestTimeout: 120_000,
