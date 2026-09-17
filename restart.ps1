@@ -123,12 +123,12 @@ if (-not (Test-Path "$root\server\dist\index.js")) {
 Write-Host ""
 Write-Host "[6/8] Backend baslatiliyor (port 3000)..."
 $backendScript = "cd /d `"$root\server`" && npm start"
-Start-Process -FilePath cmd.exe -ArgumentList '/c', $backendScript -WindowStyle Minimized -Title 'DijiCatalog-Backend'
+Start-Process -FilePath cmd.exe -ArgumentList '/c', $backendScript -WindowStyle Minimized -WindowTitle 'DijiCatalog-Backend'
 
 # [7/8] Vite dev server baslat (port 5173)
 Write-Host "[7/8] Vite dev server baslatiliyor (port 5173)..."
 $viteScript = "cd /d `"$root\client`" && npm run dev"
-Start-Process -FilePath cmd.exe -ArgumentList '/c', $viteScript -WindowStyle Minimized -Title 'DijiCatalog-Vite'
+Start-Process -FilePath cmd.exe -ArgumentList '/c', $viteScript -WindowStyle Minimized -WindowTitle 'DijiCatalog-Vite'
 
 Write-Host "   15 saniye bekleniyor..."
 Start-Sleep -Seconds 15
