@@ -128,23 +128,6 @@ const Dashboard = () => {
           })}
         </div>
       </div>
-
-      <div className="card mt-8">
-        <h2 className="text-lg font-semibold text-slate-900">Faz 1 — Auth & Multi-tenant ✅</h2>
-        <p className="mt-2 text-sm text-slate-600">
-          Multi-tenant mimari kuruldu. Her istek JWT ile doğrulanıyor,
-          <code className="mx-1 rounded bg-slate-100 px-1.5 py-0.5 text-xs">req.user.tenantId</code>
-          row-level filter için hazır.
-        </p>
-        <ul className="mt-4 space-y-1 text-sm text-slate-600">
-          <li>✅ tenants + users schema + migration</li>
-          <li>✅ register / login / refresh / me endpoint'leri</li>
-          <li>✅ JWT access (15dk) + refresh (7g) token</li>
-          <li>✅ Zustand auth store + localStorage persist</li>
-          <li>✅ Axios JWT + 401 refresh interceptor</li>
-          <li>✅ Protected route guard</li>
-        </ul>
-      </div>
     </div>
   );
 };
