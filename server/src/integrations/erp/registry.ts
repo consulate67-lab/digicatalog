@@ -34,6 +34,8 @@ export const PROVIDERS = {
       { key: 'password', label: 'Şifre', type: 'password', required: true, placeholder: '••••••' },
       { key: 'schemaName', label: 'Schema', type: 'string', required: false, placeholder: 'dbo' },
       { key: 'priceTipCode', label: 'Fiyat Tip Kodu (S_SatFiy.Tip)', type: 'string', required: false, placeholder: '361', default: '361' },
+      { key: 'categoryTable', label: 'Kategori Tablosu (cross-DB olabilir)', type: 'string', required: false, placeholder: 'korgun_parameter.dbo.P_STK_GRP', default: 'korgun_parameter.dbo.P_STK_GRP' },
+      { key: 'stockGroupCodeColumn', label: 'Stokkart Grup Kod Kolonu', type: 'string', required: false, placeholder: 'GRUPKOD', default: 'GRUPKOD' },
       { key: 'encrypt', label: 'Encrypt (SSL)', type: 'boolean', required: false, default: false },
       { key: 'trustServerCertificate', label: 'Self-signed sertifika kabul', type: 'boolean', required: false, default: true },
     ] as const,

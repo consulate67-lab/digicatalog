@@ -70,6 +70,17 @@ export interface KorgunConfig {
   productTable?: string;
   customerTable?: string;
   /**
+   * Kategori tablosu (cross-database olabilir, orn:
+   * "korgun_parameter.dbo.P_STK_GRP"). Default Korgun ERP icin.
+   */
+  categoryTable?: string;
+  /** Kategori tablosunda ID kolonu (stokkart.grupkod ile eslesir) */
+  categoryIdColumn?: string;
+  /** Kategori tablosunda isim kolonu (DijiCatalog categories.name'e yazilir) */
+  categoryNameColumn?: string;
+  /** stokkart uzerinde grup kodu kolonu (default 'GRUPKOD') */
+  stockGroupCodeColumn?: string;
+  /**
    * S_SatFiy.Tip filtresi (satis fiyat tipi). Farkli ERP kurulumlarinda farkli
    * olabilir (ornek: '361' = ana satis, '362' = bayii, vs.). Default '361'.
    */
@@ -173,6 +184,12 @@ export class KorgunMssqlAdapter extends BaseErpAdapter {
     const quotedTable = `[${schema}].[${table}]`;
     const priceTip = this.cfg.priceTipCode ?? '361';
 
+    // Kategori tablosu (cross-DB olabilir, schema-qualified verilmeli)
+    const catTable = this.cfg.categoryTable ?? 'korgun_parameter.dbo.P_STK_GRP';
+    const catIdCol = this.cfg.categoryIdColumn ?? 'S_GRP_KOD';
+    const catNameCol = this.cfg.categoryNameColumn ?? 'Tanim';
+    const stockGroupCol = this.cfg.stockGroupCodeColumn ?? 'GRUPKOD';
+
     // SQL Injection koruması: kolon adlarını whitelist'ten alıyoruz.
     // Asla kullanıcı girdisiyle dinamik SQL oluşturmuyoruz.
     const query = `
@@ -183,15 +200,18 @@ export class KorgunMssqlAdapter extends BaseErpAdapter {
         sk.[${col.description}] AS description,
         ss.[${col.price}] AS price,
         sk.[${col.currency}] AS currency,
-        sk.[${col.category}] AS category_name,
         sk.[${col.brand}] AS brand,
         sk.[${col.unit}] AS unit,
-        sd.[${col.picture}] AS picture
+        sd.[${col.picture}] AS picture,
+        sk.[${stockGroupCol}] AS group_code,
+        p.[${catNameCol}] AS category_name
       FROM ${quotedTable} sk
       LEFT JOIN [${schema}].[S_SatFiy] ss
         ON ss.SKOD = sk.[${col.id}] AND ss.RKOD = 0 AND ss.BedKod = 0 AND ss.Tip = @priceTip
       LEFT JOIN [${schema}].[S_DetPicture] sd
         ON sd.SKOD = sk.[${col.id}] AND sd.RKOD = 0 AND sd.BedKod = 0
+      LEFT JOIN ${catTable} p
+        ON p.[${catIdCol}] = sk.[${stockGroupCol}]
       WHERE sk.[${col.id}] IS NOT NULL
       ORDER BY sk.[${col.id}]
     `;
@@ -210,10 +230,10 @@ export class KorgunMssqlAdapter extends BaseErpAdapter {
         description: r.description ? String(r.description).trim() : undefined,
         price: isNaN(price) ? 0 : price,
         currency: r.currency ? normalizeCurrency(String(r.currency)) : undefined,
-        categoryName: r.category_name ? String(r.category_name).trim() : undefined,
         brand: r.brand ? String(r.brand).trim() : undefined,
         unit: r.unit ? String(r.unit).trim() : undefined,
         picture: r.picture ? String(r.picture).trim() : undefined,
+        categoryName: r.category_name ? String(r.category_name).trim() : undefined,
       };
     });
   }

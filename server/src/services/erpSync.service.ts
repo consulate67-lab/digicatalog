@@ -166,12 +166,51 @@ export const syncProducts = async (tenantId: string): Promise<SyncResult> => {
   }
 
   const djiPool = await getPool();
+
+  // 1) Kategorileri once topla + upsert et (name unique per tenant)
+  // name -> category_id map olustur
+  const categoryNameToId = new Map<string, string>();
+  const uniqueCategories = Array.from(new Set(
+    erpProducts
+      .map((p) => p.categoryName?.trim())
+      .filter((n): n is string => !!n && n.length > 0)
+  ));
+  for (const name of uniqueCategories) {
+    try {
+      const ex = await djiPool.request()
+        .input('tenantId', sql.UniqueIdentifier, tenantId)
+        .input('name', sql.NVarChar, name)
+        .query(`SELECT id FROM categories WHERE tenant_id = @tenantId AND name = @name`);
+      if (ex.recordset[0]) {
+        categoryNameToId.set(name, ex.recordset[0].id);
+      } else {
+        const slug = name
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '-')
+          .replace(/^-+|-+$/g, '')
+          .substring(0, 50);
+        const ins = await djiPool.request()
+          .input('tenantId', sql.UniqueIdentifier, tenantId)
+          .input('name', sql.NVarChar, name)
+          .input('slug', sql.NVarChar, slug)
+          .query(`INSERT INTO categories (tenant_id, name, slug, is_active)
+                  OUTPUT INSERTED.id
+                  VALUES (@tenantId, @name, @slug, 1)`);
+        categoryNameToId.set(name, ins.recordset[0].id);
+      }
+    } catch (err) {
+      result.errors.push({ message: `Kategori upsert hatasi (${name}): ${(err as Error).message}` });
+    }
+  }
+
+  // 2) Urunleri upsert et (kategori baglantilariyla)
   for (const p of erpProducts) {
     if (!p.sku || !p.name) {
       result.skipped++;
       result.errors.push({ sku: p.sku, message: 'SKU veya isim bos' });
       continue;
     }
+    const categoryId = p.categoryName ? categoryNameToId.get(p.categoryName.trim()) ?? null : null;
     try {
       // Ayni tenant icinde sku unique
       const ex = await djiPool.request()
@@ -188,6 +227,7 @@ export const syncProducts = async (tenantId: string): Promise<SyncResult> => {
           .input('currency', sql.NVarChar, p.currency ?? 'TRY')
           .input('brand', sql.NVarChar, p.brand ?? null)
           .input('unit', sql.NVarChar, p.unit ?? null)
+          .input('categoryId', sql.UniqueIdentifier, categoryId)
           .query(`UPDATE products
                   SET name = @name,
                       description = COALESCE(@description, description),
@@ -195,6 +235,7 @@ export const syncProducts = async (tenantId: string): Promise<SyncResult> => {
                       currency = @currency,
                       brand = COALESCE(@brand, brand),
                       unit = COALESCE(@unit, unit),
+                      category_id = COALESCE(@categoryId, category_id),
                       updated_at = getdate()
                   WHERE tenant_id = @tenantId AND sku = @sku`);
         result.updated++;
@@ -208,8 +249,9 @@ export const syncProducts = async (tenantId: string): Promise<SyncResult> => {
           .input('currency', sql.NVarChar, p.currency ?? 'TRY')
           .input('brand', sql.NVarChar, p.brand ?? null)
           .input('unit', sql.NVarChar, p.unit ?? null)
-          .query(`INSERT INTO products (tenant_id, sku, name, description, price, currency, brand, unit, is_active)
-                  VALUES (@tenantId, @sku, @name, @description, @price, @currency, @brand, @unit, 1)`);
+          .input('categoryId', sql.UniqueIdentifier, categoryId)
+          .query(`INSERT INTO products (tenant_id, sku, name, description, price, currency, brand, unit, category_id, is_active)
+                  VALUES (@tenantId, @sku, @name, @description, @price, @currency, @brand, @unit, @categoryId, 1)`);
         result.inserted++;
       }
     } catch (err) {
@@ -219,7 +261,7 @@ export const syncProducts = async (tenantId: string): Promise<SyncResult> => {
 
   await adapter.close().catch(() => undefined);
   logger.info(
-    { tenantId, provider, inserted: result.inserted, updated: result.updated, skipped: result.skipped, errors: result.errors.length },
+    { tenantId, provider, inserted: result.inserted, updated: result.updated, skipped: result.skipped, errors: result.errors.length, categories: categoryNameToId.size },
     'ERP urun senkronizasyonu tamamlandi',
   );
   return result;
