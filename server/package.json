@@ -6,11 +6,13 @@
   "main": "dist/index.js",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "tsc",
+    "build:ts": "tsc",
+    "build:copy": "node scripts/copy-to-dist.js",
+    "build": "npm run build:ts && npm run build:copy",
     "start": "node dist/index.js",
-    "db:migrate-mssql": "node scripts/apply-migration.js",
+    "db:migrate-mssql": "node dist/scripts/apply-migration.js",
     "db:seed": "tsx scripts/seed-demo.ts",
-    "deploy:helper": "node scripts/deploy-helper.cjs",
+    "deploy:helper": "node dist/scripts/deploy-helper.cjs",
     "test": "vitest run",
     "test:watch": "vitest"
   },
