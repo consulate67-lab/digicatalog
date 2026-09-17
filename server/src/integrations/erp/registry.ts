@@ -33,6 +33,7 @@ export const PROVIDERS = {
       { key: 'user', label: 'Kullanıcı', type: 'string', required: true, placeholder: 'sa' },
       { key: 'password', label: 'Şifre', type: 'password', required: true, placeholder: '••••••' },
       { key: 'schemaName', label: 'Schema', type: 'string', required: false, placeholder: 'dbo' },
+      { key: 'priceTipCode', label: 'Fiyat Tip Kodu (S_SatFiy.Tip)', type: 'string', required: false, placeholder: '361', default: '361' },
       { key: 'encrypt', label: 'Encrypt (SSL)', type: 'boolean', required: false, default: false },
       { key: 'trustServerCertificate', label: 'Self-signed sertifika kabul', type: 'boolean', required: false, default: true },
     ] as const,

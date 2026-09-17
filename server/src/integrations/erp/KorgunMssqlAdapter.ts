@@ -43,6 +43,7 @@ const DEFAULT_PRODUCT_COLUMNS = {
   brand: 'Marka',
   unit: 'Birim',
   description: 'Aciklama',
+  picture: 'Picture',
 } as const;
 
 const DEFAULT_CUSTOMER_COLUMNS = {
@@ -68,6 +69,11 @@ export interface KorgunConfig {
   trustServerCertificate?: boolean;
   productTable?: string;
   customerTable?: string;
+  /**
+   * S_SatFiy.Tip filtresi (satis fiyat tipi). Farkli ERP kurulumlarinda farkli
+   * olabilir (ornek: '361' = ana satis, '362' = bayii, vs.). Default '361'.
+   */
+  priceTipCode?: string;
   columns?: {
     product?: Partial<typeof DEFAULT_PRODUCT_COLUMNS>;
     customer?: Partial<typeof DEFAULT_CUSTOMER_COLUMNS>;
@@ -165,26 +171,34 @@ export class KorgunMssqlAdapter extends BaseErpAdapter {
     const table = this.cfg.productTable ?? 'StokKart';
     const col = { ...DEFAULT_PRODUCT_COLUMNS, ...(this.cfg.columns?.product ?? {}) };
     const quotedTable = `[${schema}].[${table}]`;
+    const priceTip = this.cfg.priceTipCode ?? '361';
 
     // SQL Injection koruması: kolon adlarını whitelist'ten alıyoruz.
     // Asla kullanıcı girdisiyle dinamik SQL oluşturmuyoruz.
     const query = `
       SELECT
-        [${col.id}] AS erp_id,
-        [${col.sku}] AS sku,
-        [${col.name}] AS name,
-        [${col.description}] AS description,
-        [${col.price}] AS price,
-        [${col.currency}] AS currency,
-        [${col.category}] AS category_name,
-        [${col.brand}] AS brand,
-        [${col.unit}] AS unit
-      FROM ${quotedTable}
-      WHERE [${col.id}] IS NOT NULL
-      ORDER BY [${col.id}]
+        sk.[${col.id}] AS erp_id,
+        sk.[${col.sku}] AS sku,
+        sk.[${col.name}] AS name,
+        sk.[${col.description}] AS description,
+        ss.[${col.price}] AS price,
+        sk.[${col.currency}] AS currency,
+        sk.[${col.category}] AS category_name,
+        sk.[${col.brand}] AS brand,
+        sk.[${col.unit}] AS unit,
+        sd.[${col.picture}] AS picture
+      FROM ${quotedTable} sk
+      LEFT JOIN [${schema}].[S_SatFiy] ss
+        ON ss.SKOD = sk.[${col.id}] AND ss.RKOD = 0 AND ss.BedKod = 0 AND ss.Tip = @priceTip
+      LEFT JOIN [${schema}].[S_DetPicture] sd
+        ON sd.SKOD = sk.[${col.id}] AND sd.RKOD = 0 AND sd.BedKod = 0
+      WHERE sk.[${col.id}] IS NOT NULL
+      ORDER BY sk.[${col.id}]
     `;
 
-    const result = await pool.request().query(query);
+    const result = await pool.request()
+      .input('priceTip', sql.NVarChar, priceTip)
+      .query(query);
     const rows = result.recordset as Array<Record<string, unknown>>;
 
     return rows.map((r) => {
@@ -199,6 +213,7 @@ export class KorgunMssqlAdapter extends BaseErpAdapter {
         categoryName: r.category_name ? String(r.category_name).trim() : undefined,
         brand: r.brand ? String(r.brand).trim() : undefined,
         unit: r.unit ? String(r.unit).trim() : undefined,
+        picture: r.picture ? String(r.picture).trim() : undefined,
       };
     });
   }

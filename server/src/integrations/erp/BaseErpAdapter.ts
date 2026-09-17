@@ -27,6 +27,8 @@ export interface ErpProduct {
   categoryName?: string;
   brand?: string;
   unit?: string;
+  /** ERP'deki resim path/URL — sync sırasında kullanılmaz, ileride image download için */
+  picture?: string;
 }
 
 export interface ErpCustomer {

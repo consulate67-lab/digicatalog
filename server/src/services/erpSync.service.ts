@@ -1,12 +1,23 @@
-/**
- * ERP Sync service (STUB - Drizzle ORM'den raw mssql'e gecildi).
- *
- * KorgunMssqlAdapter zaten raw mssql ile yazilmis (Faz 4) — bagimsiz.
- * Sync orchestration (products, customers) ileride yeniden yazilacak.
- */
-
+import sql from 'mssql';
+import { getPool } from '../config/database';
 import { HttpError } from '../middleware/errorHandler';
 import { logger } from '../utils/logger';
+import { PROVIDERS, getAdapter, type ProviderName } from '../integrations/erp/registry';
+
+/**
+ * ERP Sync service (raw mssql + KorgunMssqlAdapter).
+ *
+ * Faz 7 — Korgün ERP entegrasyonu:
+ *   - getTenantErpConfigResponse / setTenantErpConfig: tenants.erp_provider + erp_config
+ *     kolonlarinda tenant-scoped ERP ayarlari (JSON).
+ *   - testConnection: KorgunMssqlAdapter.ping() — baglanti testi.
+ *   - syncProducts: stokkart → products (sku unique key, upsert).
+ *   - syncCustomers: Cari_Kart → customers (erp_customer_id unique key, upsert).
+ *
+ * ONEMLI: ERP sync tenant-scoped. Her tenant kendi ERP config'i ile kendi
+ * urun/musteri setini gunceller. Row-level isolation DijiCatalog DB'de
+ * tenant_id ile saglanir.
+ */
 
 export interface SyncResult {
   inserted: number;
@@ -15,16 +26,284 @@ export interface SyncResult {
   errors: Array<{ sku?: string; customerId?: string; message: string }>;
 }
 
-export const syncProductsFromErp = async (): Promise<SyncResult> => {
-  throw new HttpError(501, 'syncProductsFromErp henuz implement edilmedi (Drizzle->raw mssql gecisi sirasinda)');
+interface TenantErpConfig {
+  provider: ProviderName | null;
+  config: Record<string, unknown>;
+}
+
+const PASSWORD_FIELD = 'password';
+
+const redactConfig = (config: Record<string, unknown>): Record<string, unknown> => {
+  if (!config || typeof config !== 'object') return {};
+  const out: Record<string, unknown> = { ...config };
+  if (PASSWORD_FIELD in out) {
+    out[PASSWORD_FIELD] = '••••••';
+  }
+  return out;
 };
 
-export const syncCustomersFromErp = async (): Promise<SyncResult> => {
-  throw new HttpError(501, 'syncCustomersFromErp henuz implement edilmedi');
+/**
+ * tenants tablosundan ERP provider + config (JSON) oku.
+ * Provider yoksa mock default kullanilir.
+ */
+export const getTenantErpConfig = async (tenantId: string): Promise<TenantErpConfig> => {
+  const pool = await getPool();
+  const r = await pool.request()
+    .input('tenantId', sql.UniqueIdentifier, tenantId)
+    .query(`SELECT erp_provider AS provider, erp_config AS config
+            FROM tenants WHERE id = @tenantId`);
+  const row = r.recordset[0];
+  if (!row) throw new HttpError(404, 'Tenant bulunamadi');
+
+  let config: Record<string, unknown> = {};
+  if (row.config) {
+    try {
+      const parsed = JSON.parse(row.config as string);
+      if (parsed && typeof parsed === 'object') config = parsed;
+    } catch {
+      // Hatali JSON — bos config kabul et
+      logger.warn({ tenantId }, 'tenants.erp_config JSON parse hatasi, bos config kullaniliyor');
+    }
+  }
+  return {
+    provider: (row.provider as ProviderName | null) ?? null,
+    config,
+  };
 };
 
-export const testErpConnection = async (): Promise<{ ok: boolean; message: string }> => {
-  throw new HttpError(501, 'testErpConnection henuz implement edilmedi');
+export interface TenantErpConfigResponse {
+  provider: ProviderName | null;
+  config: Record<string, unknown>;
+  providerMeta: {
+    name: ProviderName;
+    label: string;
+    description: string;
+    configSchema: ReadonlyArray<{ key: string; label: string; type: string; required: boolean; placeholder?: string; default?: unknown }>;
+  } | null;
+}
+
+export const getTenantErpConfigResponse = async (tenantId: string): Promise<TenantErpConfigResponse> => {
+  const { provider, config } = await getTenantErpConfig(tenantId);
+  const providerMeta = provider && provider in PROVIDERS
+    ? {
+        name: provider,
+        label: PROVIDERS[provider].label,
+        description: PROVIDERS[provider].description,
+        configSchema: [...PROVIDERS[provider].configSchema],
+      }
+    : null;
+  return {
+    provider,
+    config: redactConfig(config),
+    providerMeta,
+  };
 };
 
-logger.info('erpSync.service.ts (stub) yuklendi');
+export const setTenantErpConfig = async (
+  tenantId: string,
+  providerName: string,
+  config: Record<string, unknown>,
+): Promise<void> => {
+  if (!(providerName in PROVIDERS)) {
+    throw new HttpError(400, `Bilinmeyen ERP provider: ${providerName}`);
+  }
+  // Boş password gönderildiyse (UI redaction sonrasi) eski degeri koru
+  let finalConfig = { ...config };
+  if (finalConfig[PASSWORD_FIELD] === '••••••' || finalConfig[PASSWORD_FIELD] === '') {
+    const existing = await getTenantErpConfig(tenantId);
+    if (existing.config[PASSWORD_FIELD]) {
+      finalConfig[PASSWORD_FIELD] = existing.config[PASSWORD_FIELD];
+    } else {
+      throw new HttpError(400, 'ERP sifresi zorunludur');
+    }
+  }
+
+  const pool = await getPool();
+  await pool.request()
+    .input('tenantId', sql.UniqueIdentifier, tenantId)
+    .input('provider', sql.NVarChar, providerName)
+    .input('config', sql.NVarChar, JSON.stringify(finalConfig))
+    .query(`UPDATE tenants
+            SET erp_provider = @provider, erp_config = @config, updated_at = getdate()
+            WHERE id = @tenantId`);
+  logger.info({ tenantId, provider: providerName }, 'ERP config guncellendi');
+};
+
+export const testConnection = async (tenantId: string): Promise<{
+  ok: boolean;
+  latencyMs: number;
+  message?: string;
+  details?: Record<string, unknown>;
+}> => {
+  const { provider, config } = await getTenantErpConfig(tenantId);
+  if (!provider) {
+    return { ok: false, latencyMs: 0, message: 'ERP provider secilmemis' };
+  }
+  const adapter = getAdapter(provider, config);
+  try {
+    const result = await adapter.ping();
+    return result;
+  } finally {
+    await adapter.close().catch(() => undefined);
+  }
+};
+
+export const syncProducts = async (tenantId: string): Promise<SyncResult> => {
+  const { provider, config } = await getTenantErpConfig(tenantId);
+  const result: SyncResult = { inserted: 0, updated: 0, skipped: 0, errors: [] };
+
+  if (!provider) {
+    throw new HttpError(400, 'ERP provider secilmemis. Once ayarlari kaydedin.');
+  }
+
+  const adapter = getAdapter(provider, config);
+  let erpProducts;
+  try {
+    erpProducts = await adapter.fetchProducts();
+  } catch (err) {
+    await adapter.close().catch(() => undefined);
+    throw new HttpError(502, `ERP urun cekme hatasi: ${(err as Error).message}`);
+  }
+
+  const djiPool = await getPool();
+  for (const p of erpProducts) {
+    if (!p.sku || !p.name) {
+      result.skipped++;
+      result.errors.push({ sku: p.sku, message: 'SKU veya isim bos' });
+      continue;
+    }
+    try {
+      // Ayni tenant icinde sku unique
+      const ex = await djiPool.request()
+        .input('tenantId', sql.UniqueIdentifier, tenantId)
+        .input('sku', sql.NVarChar, p.sku)
+        .query(`SELECT id FROM products WHERE tenant_id = @tenantId AND sku = @sku`);
+      if (ex.recordset[0]) {
+        await djiPool.request()
+          .input('tenantId', sql.UniqueIdentifier, tenantId)
+          .input('sku', sql.NVarChar, p.sku)
+          .input('name', sql.NVarChar, p.name)
+          .input('description', sql.NVarChar, p.description ?? null)
+          .input('price', sql.Decimal(12, 2), String(p.price ?? 0))
+          .input('currency', sql.NVarChar, p.currency ?? 'TRY')
+          .input('brand', sql.NVarChar, p.brand ?? null)
+          .input('unit', sql.NVarChar, p.unit ?? null)
+          .query(`UPDATE products
+                  SET name = @name,
+                      description = COALESCE(@description, description),
+                      price = @price,
+                      currency = @currency,
+                      brand = COALESCE(@brand, brand),
+                      unit = COALESCE(@unit, unit),
+                      updated_at = getdate()
+                  WHERE tenant_id = @tenantId AND sku = @sku`);
+        result.updated++;
+      } else {
+        await djiPool.request()
+          .input('tenantId', sql.UniqueIdentifier, tenantId)
+          .input('sku', sql.NVarChar, p.sku)
+          .input('name', sql.NVarChar, p.name)
+          .input('description', sql.NVarChar, p.description ?? null)
+          .input('price', sql.Decimal(12, 2), String(p.price ?? 0))
+          .input('currency', sql.NVarChar, p.currency ?? 'TRY')
+          .input('brand', sql.NVarChar, p.brand ?? null)
+          .input('unit', sql.NVarChar, p.unit ?? null)
+          .query(`INSERT INTO products (tenant_id, sku, name, description, price, currency, brand, unit, is_active)
+                  VALUES (@tenantId, @sku, @name, @description, @price, @currency, @brand, @unit, 1)`);
+        result.inserted++;
+      }
+    } catch (err) {
+      result.errors.push({ sku: p.sku, message: (err as Error).message });
+    }
+  }
+
+  await adapter.close().catch(() => undefined);
+  logger.info(
+    { tenantId, provider, inserted: result.inserted, updated: result.updated, skipped: result.skipped, errors: result.errors.length },
+    'ERP urun senkronizasyonu tamamlandi',
+  );
+  return result;
+};
+
+export const syncCustomers = async (tenantId: string): Promise<SyncResult> => {
+  const { provider, config } = await getTenantErpConfig(tenantId);
+  const result: SyncResult = { inserted: 0, updated: 0, skipped: 0, errors: [] };
+
+  if (!provider) {
+    throw new HttpError(400, 'ERP provider secilmemis. Once ayarlari kaydedin.');
+  }
+
+  const adapter = getAdapter(provider, config);
+  let erpCustomers;
+  try {
+    erpCustomers = await adapter.fetchCustomers();
+  } catch (err) {
+    await adapter.close().catch(() => undefined);
+    throw new HttpError(502, `ERP musteri cekme hatasi: ${(err as Error).message}`);
+  }
+
+  const djiPool = await getPool();
+  for (const c of erpCustomers) {
+    if (!c.erpId || !c.name) {
+      result.skipped++;
+      result.errors.push({ customerId: c.erpId, message: 'ERP ID veya isim bos' });
+      continue;
+    }
+    try {
+      // erp_customer_id tenant-scoped unique
+      const ex = await djiPool.request()
+        .input('tenantId', sql.UniqueIdentifier, tenantId)
+        .input('erpId', sql.NVarChar, c.erpId)
+        .query(`SELECT id FROM customers WHERE tenant_id = @tenantId AND erp_customer_id = @erpId`);
+      if (ex.recordset[0]) {
+        await djiPool.request()
+          .input('tenantId', sql.UniqueIdentifier, tenantId)
+          .input('erpId', sql.NVarChar, c.erpId)
+          .input('name', sql.NVarChar, c.name)
+          .input('contactName', sql.NVarChar, c.contactName ?? null)
+          .input('email', sql.NVarChar, c.email ?? null)
+          .input('phone', sql.NVarChar, c.phone ?? null)
+          .input('address', sql.NVarChar, c.address ?? null)
+          .input('taxNumber', sql.NVarChar, c.taxNumber ?? null)
+          .input('taxOffice', sql.NVarChar, c.taxOffice ?? null)
+          .query(`UPDATE customers
+                  SET name = @name,
+                      contact_name = COALESCE(@contactName, contact_name),
+                      email = COALESCE(@email, email),
+                      phone = COALESCE(@phone, phone),
+                      address = COALESCE(@address, address),
+                      tax_number = COALESCE(@taxNumber, tax_number),
+                      tax_office = COALESCE(@taxOffice, tax_office),
+                      source = 'erp',
+                      updated_at = getdate()
+                  WHERE tenant_id = @tenantId AND erp_customer_id = @erpId`);
+        result.updated++;
+      } else {
+        await djiPool.request()
+          .input('tenantId', sql.UniqueIdentifier, tenantId)
+          .input('erpId', sql.NVarChar, c.erpId)
+          .input('name', sql.NVarChar, c.name)
+          .input('contactName', sql.NVarChar, c.contactName ?? null)
+          .input('email', sql.NVarChar, c.email ?? null)
+          .input('phone', sql.NVarChar, c.phone ?? null)
+          .input('address', sql.NVarChar, c.address ?? null)
+          .input('taxNumber', sql.NVarChar, c.taxNumber ?? null)
+          .input('taxOffice', sql.NVarChar, c.taxOffice ?? null)
+          .query(`INSERT INTO customers (tenant_id, erp_customer_id, name, contact_name, email, phone, address, tax_number, tax_office, source, is_active)
+                  VALUES (@tenantId, @erpId, @name, @contactName, @email, @phone, @address, @taxNumber, @taxOffice, 'erp', 1)`);
+        result.inserted++;
+      }
+    } catch (err) {
+      result.errors.push({ customerId: c.erpId, message: (err as Error).message });
+    }
+  }
+
+  await adapter.close().catch(() => undefined);
+  logger.info(
+    { tenantId, provider, inserted: result.inserted, updated: result.updated, skipped: result.skipped, errors: result.errors.length },
+    'ERP musteri senkronizasyonu tamamlandi',
+  );
+  return result;
+};
+
+logger.info('erpSync.service.ts (raw mssql) yuklendi');
