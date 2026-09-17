@@ -1,0 +1,153 @@
+{
+  "common": {
+    "appName": "DijiCatalog",
+    "version": "v1.0",
+    "login": "Giriş Yap",
+    "register": "Kayıt Ol",
+    "logout": "Çıkış",
+    "dashboard": "Dashboard",
+    "freeTrial": "Ücretsiz Dene",
+    "loading": "Yükleniyor...",
+    "backHome": "Ana Sayfa"
+  },
+  "landing": {
+    "hero": {
+      "badge": "Kiralanabilir SaaS Katalog Platformu",
+      "title": "Ürünlerinizi Dijital Katalogla Müşterilerinize Taşıyın",
+      "subtitle": "Ürünlerinizi kategorilere göre düzenleyin, müşteri ziyaretlerinde tek tuşla gösterin, PDF olarak paylaşın. Kurulum yok, kredi kartı yok.",
+      "ctaPrimary": "Ücretsiz Dene",
+      "ctaSecondary": "Giriş Yap",
+      "trustLine": "On-premise veya bulut — verileriniz tamamen size aittir."
+    },
+    "howItWorks": {
+      "title": "Üç Adımda Katalog",
+      "subtitle": "Ürünlerinizi ekleyin, katalogunuzu oluşturun, müşterilerinizle paylaşın.",
+      "steps": [
+        {
+          "number": "01",
+          "title": "Ürünlerinizi Ekleyin",
+          "description": "SKU, kategori, marka, fiyat ve görsel ile ürün kütüphanenizi oluşturun. Excel/CSV import ile yüzlerce ürünü dakikalar içinde yükleyin."
+        },
+        {
+          "number": "02",
+          "title": "Katalogunuzu Oluşturun",
+          "description": "Hangi müşteriye hangi ürünleri göstereceğinizi seçin. Sıralama, görünür alanlar ve kategori bazlı filtreleme ile tam kontrol sizde."
+        },
+        {
+          "number": "03",
+          "title": "Müşteriye Paylaşın",
+          "description": "Tek tıkla paylaşılabilir link veya PDF. Müşterileriniz kimlik bilgisi gerekmeden modern bir arayüzde kataloğunuza erişir."
+        }
+      ]
+    },
+    "features": {
+      "title": "Neden DijiCatalog?",
+      "subtitle": "Satış ekibinin ihtiyaç duyduğu her şey, gereksiz hiçbir şey yok.",
+      "items": [
+        {
+          "icon": "Shield",
+          "title": "Multi-Tenant Mimari",
+          "description": "Her müşteri kendi veri alanında çalışır. Tenant izolasyonu middleware seviyesinde — veri sızıntısı riski sıfır."
+        },
+        {
+          "icon": "Plug",
+          "title": "ERP Entegrasyonu",
+          "description": "Korgün ERP ile tek tıkla ürün ve müşteri senkronizasyonu. Manuel veri girişine son."
+        },
+        {
+          "icon": "FileText",
+          "title": "PDF Üretimi",
+          "description": "Profesyonel katalog şablonlarından tek tuşla PDF. Müşteri ziyaretleri ve baskı için ideal."
+        },
+        {
+          "icon": "Eye",
+          "title": "Müşteri Viewer'ı",
+          "description": "Public link — kimlik bilgisi gerekmez. Modern, mobil uyumlu görüntüleme deneyimi."
+        },
+        {
+          "icon": "FolderTree",
+          "title": "Kategori Yönetimi",
+          "description": "Hiyerarşik kategori ağacı ile ürünlerinizi düzenleyin. Sürükle-bırak sıralama."
+        },
+        {
+          "icon": "Image",
+          "title": "Görsel Yönetimi",
+          "description": "Base64 (10MB'a kadar optimize) veya URL. CDN'ye geçiş için adapter pattern hazır."
+        }
+      ]
+    },
+    "faq": {
+      "title": "Sıkça Sorulan Sorular",
+      "subtitle": "İlk günden merak ettikleriniz.",
+      "items": [
+        {
+          "question": "DijiCatalog nedir?",
+          "answer": "Kiralanabilir bir dijital katalog SaaS'tır. Ürün kütüphanenizi oluşturur, müşterilerinize özel kataloglar hazırlar ve onlarla public link veya PDF olarak paylaşırsınız."
+        },
+        {
+          "question": "Verilerim nerede saklanıyor?",
+          "answer": "Kurulum seçeneklerinize göre kendi sunucunuzda (on-premise MSSQL/PostgreSQL) veya bulutta (Railway, Azure) saklanır. Verileriniz tamamen size aittir, üçüncü taraflarla paylaşılmaz."
+        },
+        {
+          "question": "Korgün ERP entegrasyonu nasıl çalışır?",
+          "answer": "Stok ve müşteri kartlarını doğrudan Korgün ERP veritabanından çekersiniz. Yeni ürün veya müşteri eklendiğinde tek tıkla senkronize olur, manuel veri girişi yapmanıza gerek kalmaz."
+        },
+        {
+          "question": "Müşteri viewer'ını nasıl paylaşırım?",
+          "answer": "Katalog detay sayfasındaki paylaş butonu, katalog için unique bir public link üretir. WhatsApp, e-posta veya QR kod ile gönderebilirsiniz. Müşterileriniz kimlik bilgisi girmeden görüntüler."
+        },
+        {
+          "question": "Fiyatlandırma nasıl?",
+          "answer": "Şu an erken erişim (early access) dönemindeyiz. Kayıt olduğunuzda tam özellik erişimi ile deneme hesabı açılır. Kurumsal kullanım için özel fiyatlandırma yapılır."
+        }
+      ]
+    },
+    "footerCta": {
+      "title": "Hemen Başlayın",
+      "subtitle": "Kurulum yok, kredi kartı yok. Demo hesabınız birkaç saniyede hazır.",
+      "button": "Ücretsiz Deneme Hesabı Aç"
+    }
+  },
+  "login": {
+    "title": "DijiCatalog'a Giriş",
+    "subtitle": "Hesabınız yok mu?",
+    "registerLink": "Ücretsiz kayıt olun",
+    "email": "Email",
+    "emailPlaceholder": "ornek@firma.com",
+    "password": "Şifre",
+    "passwordPlaceholder": "••••••••",
+    "submit": "Giriş Yap",
+    "submitting": "Giriş yapılıyor...",
+    "demoHint": "Demo bilgileri",
+    "demoEmail": "demo@digicatalog.local",
+    "demoPassword": "Demo123!",
+    "errors": {
+      "generic": "Giriş başarısız, tekrar deneyin"
+    }
+  },
+  "register": {
+    "title": "Ücretsiz Kayıt",
+    "subtitle": "Zaten hesabınız var mı?",
+    "loginLink": "Giriş yapın",
+    "companyName": "Firma Adı",
+    "companyPlaceholder": "Acme Katalog Ltd.",
+    "slug": "URL Kısa Adı",
+    "slugHint": "(acme-catalog gibi, sadece küçük harf, rakam, tire)",
+    "slugPlaceholder": "acme-catalog",
+    "slugAutoFilled": "Otomatik önerildi",
+    "name": "Adınız",
+    "namePlaceholder": "Selim Yılmaz",
+    "email": "Email",
+    "emailPlaceholder": "ornek@firma.com",
+    "password": "Şifre",
+    "passwordHint": "(en az 8 karakter)",
+    "submit": "Kayıt Ol",
+    "submitting": "Kayıt oluşturuluyor...",
+    "errors": {
+      "generic": "Kayıt başarısız, tekrar deneyin"
+    }
+  },
+  "footer": {
+    "copyright": "© 2026 DijiCatalog. Tüm hakları saklıdır."
+  }
+}

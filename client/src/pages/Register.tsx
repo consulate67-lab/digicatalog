@@ -1,6 +1,7 @@
 import { useState, FormEvent } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useMutation } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import { BookOpen, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react';
 import api from '../lib/api';
 import { useAuthStore, type AuthTokens, type User, type Tenant } from '../store/auth';
@@ -20,6 +21,7 @@ interface RegisterResponse {
  * - Başarılı → /dashboard'a yönlendir
  */
 const Register = () => {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const setAuth = useAuthStore((s) => s.setAuth);
 
@@ -69,7 +71,7 @@ const Register = () => {
 
   const errorMessage = registerMutation.error
     ? (registerMutation.error as { response?: { data?: { message?: string; details?: Record<string, string[]> } } })
-        ?.response?.data?.message || 'Kayıt başarısız, tekrar deneyin'
+        ?.response?.data?.message || t('register.errors.generic')
     : null;
 
   const fieldErrors = (registerMutation.error as { response?: { data?: { details?: Record<string, string[]> } } })
@@ -80,11 +82,11 @@ const Register = () => {
       <div className="w-full max-w-md">
         <div className="text-center">
           <BookOpen className="mx-auto h-10 w-10 text-brand-600" />
-          <h1 className="mt-4 text-2xl font-bold text-slate-900">Ücretsiz Kayıt</h1>
+          <h1 className="mt-4 text-2xl font-bold text-slate-900">{t('register.title')}</h1>
           <p className="mt-2 text-sm text-slate-600">
-            Zaten hesabınız var mı?{' '}
+            {t('register.subtitle')}{' '}
             <Link to="/login" className="font-medium text-brand-600 hover:text-brand-700">
-              Giriş yapın
+              {t('register.loginLink')}
             </Link>
           </p>
         </div>
@@ -99,7 +101,7 @@ const Register = () => {
 
           <div>
             <label htmlFor="tenantName" className="block text-sm font-medium text-slate-700">
-              Firma Adı
+              {t('register.companyName')}
             </label>
             <input
               id="tenantName"
@@ -110,7 +112,7 @@ const Register = () => {
               value={form.tenantName}
               onChange={(e) => updateField('tenantName', e.target.value)}
               className="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
-              placeholder="Acme Katalog Ltd."
+              placeholder={t('register.companyPlaceholder')}
             />
             {fieldErrors?.tenantName && (
               <p className="mt-1 text-xs text-rose-600">{fieldErrors.tenantName[0]}</p>
@@ -119,9 +121,9 @@ const Register = () => {
 
           <div>
             <label htmlFor="tenantSlug" className="block text-sm font-medium text-slate-700">
-              URL Kısa Adı
+              {t('register.slug')}
               <span className="ml-1 text-xs font-normal text-slate-500">
-                (acme-catalog gibi, sadece küçük harf, rakam, tire)
+                {t('register.slugHint')}
               </span>
             </label>
             <input
@@ -133,12 +135,12 @@ const Register = () => {
               value={form.tenantSlug}
               onChange={(e) => updateField('tenantSlug', e.target.value)}
               className="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
-              placeholder="acme-catalog"
+              placeholder={t('register.slugPlaceholder')}
             />
             {slugAutoFilled && form.tenantSlug && (
               <p className="mt-1 flex items-center gap-1 text-xs text-slate-500">
                 <CheckCircle2 className="h-3 w-3" />
-                Otomatik önerildi
+                {t('register.slugAutoFilled')}
               </p>
             )}
             {fieldErrors?.tenantSlug && (
@@ -148,7 +150,7 @@ const Register = () => {
 
           <div>
             <label htmlFor="name" className="block text-sm font-medium text-slate-700">
-              Adınız
+              {t('register.name')}
             </label>
             <input
               id="name"
@@ -159,7 +161,7 @@ const Register = () => {
               value={form.name}
               onChange={(e) => updateField('name', e.target.value)}
               className="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
-              placeholder="Selim Yılmaz"
+              placeholder={t('register.namePlaceholder')}
             />
             {fieldErrors?.name && (
               <p className="mt-1 text-xs text-rose-600">{fieldErrors.name[0]}</p>
@@ -168,7 +170,7 @@ const Register = () => {
 
           <div>
             <label htmlFor="email" className="block text-sm font-medium text-slate-700">
-              Email
+              {t('register.email')}
             </label>
             <input
               id="email"
@@ -177,7 +179,7 @@ const Register = () => {
               value={form.email}
               onChange={(e) => updateField('email', e.target.value)}
               className="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
-              placeholder="ornek@firma.com"
+              placeholder={t('register.emailPlaceholder')}
             />
             {fieldErrors?.email && (
               <p className="mt-1 text-xs text-rose-600">{fieldErrors.email[0]}</p>
@@ -186,8 +188,10 @@ const Register = () => {
 
           <div>
             <label htmlFor="password" className="block text-sm font-medium text-slate-700">
-              Şifre
-              <span className="ml-1 text-xs font-normal text-slate-500">(en az 8 karakter)</span>
+              {t('register.password')}
+              <span className="ml-1 text-xs font-normal text-slate-500">
+                {t('register.passwordHint')}
+              </span>
             </label>
             <input
               id="password"
@@ -197,7 +201,7 @@ const Register = () => {
               value={form.password}
               onChange={(e) => updateField('password', e.target.value)}
               className="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
-              placeholder="••••••••"
+              placeholder={t('login.passwordPlaceholder')}
             />
             {fieldErrors?.password && (
               <p className="mt-1 text-xs text-rose-600">{fieldErrors.password[0]}</p>
@@ -212,10 +216,10 @@ const Register = () => {
             {registerMutation.isPending ? (
               <>
                 <Loader2 className="h-4 w-4 animate-spin" />
-                Kayıt oluşturuluyor...
+                {t('register.submitting')}
               </>
             ) : (
-              'Kayıt Ol'
+              t('register.submit')
             )}
           </button>
         </form>

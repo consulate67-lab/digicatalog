@@ -1,0 +1,153 @@
+{
+  "common": {
+    "appName": "DijiCatalog",
+    "version": "v1.0",
+    "login": "Sign In",
+    "register": "Sign Up",
+    "logout": "Sign Out",
+    "dashboard": "Dashboard",
+    "freeTrial": "Try Free",
+    "loading": "Loading...",
+    "backHome": "Home"
+  },
+  "landing": {
+    "hero": {
+      "badge": "Rentable SaaS Catalog Platform",
+      "title": "Bring Your Products to Customers Through Digital Catalogs",
+      "subtitle": "Organize your products by category, show them to customers on visits with one click, share as PDF. No setup, no credit card.",
+      "ctaPrimary": "Try Free",
+      "ctaSecondary": "Sign In",
+      "trustLine": "On-premise or cloud — your data stays yours."
+    },
+    "howItWorks": {
+      "title": "Three Steps to a Catalog",
+      "subtitle": "Add your products, build your catalog, share with customers.",
+      "steps": [
+        {
+          "number": "01",
+          "title": "Add Your Products",
+          "description": "Build your product library with SKU, category, brand, price and image. Import hundreds of products in minutes via Excel/CSV."
+        },
+        {
+          "number": "02",
+          "title": "Build Your Catalog",
+          "description": "Choose which products to show which customers. Full control over ordering, visible fields, and category filtering."
+        },
+        {
+          "number": "03",
+          "title": "Share with Customers",
+          "description": "One-click shareable link or PDF. Customers access your catalog on a modern interface — no login required."
+        }
+      ]
+    },
+    "features": {
+      "title": "Why DijiCatalog?",
+      "subtitle": "Everything your sales team needs, nothing they don't.",
+      "items": [
+        {
+          "icon": "Shield",
+          "title": "Multi-Tenant Architecture",
+          "description": "Each customer operates in their own data space. Tenant isolation enforced at middleware level — zero data leak risk."
+        },
+        {
+          "icon": "Plug",
+          "title": "ERP Integration",
+          "description": "One-click product and customer sync with Korgün ERP. No more manual data entry."
+        },
+        {
+          "icon": "FileText",
+          "title": "PDF Generation",
+          "description": "One-click PDF from professional catalog templates. Perfect for customer visits and print."
+        },
+        {
+          "icon": "Eye",
+          "title": "Customer Viewer",
+          "description": "Public link — no credentials needed. Modern, mobile-friendly viewing experience."
+        },
+        {
+          "icon": "FolderTree",
+          "title": "Category Management",
+          "description": "Organize your products in a hierarchical category tree. Drag-and-drop ordering."
+        },
+        {
+          "icon": "Image",
+          "title": "Image Management",
+          "description": "Base64 (optimized up to 10MB) or URL. Adapter pattern ready for CDN migration."
+        }
+      ]
+    },
+    "faq": {
+      "title": "Frequently Asked Questions",
+      "subtitle": "What you want to know from day one.",
+      "items": [
+        {
+          "question": "What is DijiCatalog?",
+          "answer": "A rentable digital catalog SaaS. Build your product library, prepare customer-specific catalogs, share them via public link or PDF."
+        },
+        {
+          "question": "Where is my data stored?",
+          "answer": "Depending on your setup choice: on your own server (on-premise MSSQL/PostgreSQL) or in the cloud (Railway, Azure). Your data is entirely yours, never shared with third parties."
+        },
+        {
+          "question": "How does Korgün ERP integration work?",
+          "answer": "Stock and customer records are pulled directly from the Korgün ERP database. When new products or customers are added, sync runs in one click — no manual data entry."
+        },
+        {
+          "question": "How do I share a customer viewer?",
+          "answer": "The share button on the catalog detail page generates a unique public link. Send it via WhatsApp, email, or QR code. Customers view it without signing in."
+        },
+        {
+          "question": "How is pricing structured?",
+          "answer": "We are currently in early access. Signing up gives you full-feature access with a trial account. Custom pricing is available for enterprise usage."
+        }
+      ]
+    },
+    "footerCta": {
+      "title": "Get Started Now",
+      "subtitle": "No setup, no credit card. Your demo account is ready in seconds.",
+      "button": "Open Free Trial Account"
+    }
+  },
+  "login": {
+    "title": "Sign In to DijiCatalog",
+    "subtitle": "Don't have an account?",
+    "registerLink": "Sign up free",
+    "email": "Email",
+    "emailPlaceholder": "example@company.com",
+    "password": "Password",
+    "passwordPlaceholder": "••••••••",
+    "submit": "Sign In",
+    "submitting": "Signing in...",
+    "demoHint": "Demo credentials",
+    "demoEmail": "demo@digicatalog.local",
+    "demoPassword": "Demo123!",
+    "errors": {
+      "generic": "Sign in failed, please try again"
+    }
+  },
+  "register": {
+    "title": "Free Sign Up",
+    "subtitle": "Already have an account?",
+    "loginLink": "Sign in",
+    "companyName": "Company Name",
+    "companyPlaceholder": "Acme Catalog Ltd.",
+    "slug": "URL Slug",
+    "slugHint": "(like acme-catalog, lowercase, digits, dash only)",
+    "slugPlaceholder": "acme-catalog",
+    "slugAutoFilled": "Auto-suggested",
+    "name": "Your Name",
+    "namePlaceholder": "Selim Yılmaz",
+    "email": "Email",
+    "emailPlaceholder": "example@company.com",
+    "password": "Password",
+    "passwordHint": "(at least 8 characters)",
+    "submit": "Sign Up",
+    "submitting": "Creating account...",
+    "errors": {
+      "generic": "Registration failed, please try again"
+    }
+  },
+  "footer": {
+    "copyright": "© 2026 DijiCatalog. All rights reserved."
+  }
+}
