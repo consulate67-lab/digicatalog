@@ -122,13 +122,15 @@ if (-not (Test-Path "$root\server\dist\index.js")) {
 # [6/8] Backend baslat (port 3000)
 Write-Host ""
 Write-Host "[6/8] Backend baslatiliyor (port 3000)..."
-$backendScript = "cd /d `"$root\server`" && npm start"
-Start-Process -FilePath cmd.exe -ArgumentList '/c', $backendScript -WindowStyle Minimized -WindowTitle 'DijiCatalog-Backend'
+# cmd.exe'nin 'title' komutuyla pencere basligi ayarlanir
+# (Start-Process'in -Title veya -WindowTitle parametresi yok)
+$backendScript = "title DijiCatalog-Backend && cd /d `"$root\server`" && npm start"
+Start-Process -FilePath cmd.exe -ArgumentList '/c', $backendScript -WindowStyle Minimized
 
 # [7/8] Vite dev server baslat (port 5173)
 Write-Host "[7/8] Vite dev server baslatiliyor (port 5173)..."
-$viteScript = "cd /d `"$root\client`" && npm run dev"
-Start-Process -FilePath cmd.exe -ArgumentList '/c', $viteScript -WindowStyle Minimized -WindowTitle 'DijiCatalog-Vite'
+$viteScript = "title DijiCatalog-Vite && cd /d `"$root\client`" && npm run dev"
+Start-Process -FilePath cmd.exe -ArgumentList '/c', $viteScript -WindowStyle Minimized
 
 Write-Host "   15 saniye bekleniyor..."
 Start-Sleep -Seconds 15
