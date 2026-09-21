@@ -162,7 +162,9 @@ export const syncProducts = async (tenantId: string): Promise<SyncResult> => {
     erpProducts = await adapter.fetchProducts();
   } catch (err) {
     await adapter.close().catch(() => undefined);
-    throw new HttpError(502, `ERP urun cekme hatasi: ${(err as Error).message}`);
+    const message = (err as Error).message;
+    logger.error({ err, message, tenantId }, 'ERP urun cekme hatasi');
+    throw new HttpError(502, `ERP urun cekme hatasi: ${message}`);
   }
 
   const djiPool = await getPool();
@@ -281,7 +283,9 @@ export const syncCustomers = async (tenantId: string): Promise<SyncResult> => {
     erpCustomers = await adapter.fetchCustomers();
   } catch (err) {
     await adapter.close().catch(() => undefined);
-    throw new HttpError(502, `ERP musteri cekme hatasi: ${(err as Error).message}`);
+    const message = (err as Error).message;
+    logger.error({ err, message, tenantId }, 'ERP musteri cekme hatasi');
+    throw new HttpError(502, `ERP musteri cekme hatasi: ${message}`);
   }
 
   const djiPool = await getPool();

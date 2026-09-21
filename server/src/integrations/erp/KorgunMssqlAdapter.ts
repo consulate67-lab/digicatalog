@@ -34,27 +34,27 @@ import { logger } from '../../utils/logger';
  */
 
 const DEFAULT_PRODUCT_COLUMNS = {
-  id: 'StokKod',
-  sku: 'StokKod',
-  name: 'StokAdi',
-  price: 'SatisFiyat',
-  currency: 'DovizCinsi',
-  category: 'GrupAdi',
-  brand: 'Marka',
-  unit: 'Birim',
-  description: 'Aciklama',
-  picture: 'Picture',
+  id: 'skod',                    // stokkart.skod (lowercase!)
+  sku: 'skod',
+  name: 'tanim',                  // stokkart.tanim
+  price: 'Fiyat',                 // S_SatFiy.Fiyat (from join)
+  currency: 'paracinsi',          // stokkart.paracinsi
+  category: 'Tanim',              // P_STK_GRP.Tanim (from cross-db join)
+  brand: 'marka',                 // stokkart.marka (infer)
+  unit: 'birim',                  // stokkart.birim (infer)
+  description: '',                // stokkart'ta description yok, skip
+  picture: 'Picture',             // S_DetPicture.Picture
 } as const;
 
 const DEFAULT_CUSTOMER_COLUMNS = {
-  id: 'CariKod',
-  name: 'CariAdi',
-  contact: 'Ilgili',
-  email: 'Email',
-  phone: 'Telefon',
-  address: 'Adres',
-  taxNumber: 'VergiNo',
-  taxOffice: 'VergiDairesi',
+  id: 'ckod',                     // Cari_Kart.ckod
+  name: 'cname',                  // Cari_Kart.cname
+  contact: 'Yetkili',             // Cari_Kart.Yetkili (infer)
+  email: 'Email',                 // (infer)
+  phone: 'Telefon',               // (infer)
+  address: 'Adres',               // (infer)
+  taxNumber: 'VergiNo',          // (infer)
+  taxOffice: 'VergiDairesi',      // (infer)
 } as const;
 
 export interface KorgunConfig {
@@ -196,7 +196,7 @@ export class KorgunMssqlAdapter extends BaseErpAdapter {
   async fetchProducts(): Promise<ErpProduct[]> {
     const pool = await this.getPool();
     const schema = this.cfg.schemaName ?? 'dbo';
-    const table = this.cfg.productTable ?? 'StokKart';
+    const table = this.cfg.productTable ?? 'stokkart';
     const col = { ...DEFAULT_PRODUCT_COLUMNS, ...(this.cfg.columns?.product ?? {}) };
     const quotedTable = `[${schema}].[${table}]`;
     const priceTip = this.cfg.priceTipCode ?? '361';
@@ -208,25 +208,33 @@ export class KorgunMssqlAdapter extends BaseErpAdapter {
     const stockGroupCol = this.cfg.stockGroupCodeColumn ?? 'GRUPKOD';
 
     // SQL Injection koruması: kolon adlarını whitelist'ten alıyoruz.
-    // Asla kullanıcı girdisiyle dinamik SQL oluşturmuyoruz.
+    // Bos/empty kolonlar SELECT'ten cikarilir (stokkart'ta description yok gibi).
+    const selectCols: string[] = [
+      `sk.[${col.id}] AS erp_id`,
+      `sk.[${col.sku}] AS sku`,
+      `sk.[${col.name}] AS name`,
+    ];
+    if (col.description) selectCols.push(`sk.[${col.description}] AS description`);
+    selectCols.push(
+      `ss.[${col.price}] AS price`,
+      `sk.[${col.currency}] AS currency`,
+    );
+    if (col.brand) selectCols.push(`sk.[${col.brand}] AS brand`);
+    if (col.unit) selectCols.push(`sk.[${col.unit}] AS unit`);
+    selectCols.push(
+      `sd.[${col.picture}] AS picture`,
+      `sk.[${stockGroupCol}] AS group_code`,
+      `p.[${catNameCol}] AS category_name`,
+    );
+
     const query = `
       SELECT
-        sk.[${col.id}] AS erp_id,
-        sk.[${col.sku}] AS sku,
-        sk.[${col.name}] AS name,
-        sk.[${col.description}] AS description,
-        ss.[${col.price}] AS price,
-        sk.[${col.currency}] AS currency,
-        sk.[${col.brand}] AS brand,
-        sk.[${col.unit}] AS unit,
-        sd.[${col.picture}] AS picture,
-        sk.[${stockGroupCol}] AS group_code,
-        p.[${catNameCol}] AS category_name
+        ${selectCols.join(', ')}
       FROM ${quotedTable} sk
       LEFT JOIN [${schema}].[S_SatFiy] ss
-        ON ss.SKOD = sk.[${col.id}] AND ss.RKOD = 0 AND ss.BedKod = 0 AND ss.Tip = @priceTip
+        ON ss.[SKOD] = sk.[${col.id}] AND ss.[RKOD] = 0 AND ss.[BedKod] = 0 AND ss.[Tip] = @priceTip
       LEFT JOIN [${schema}].[S_DetPicture] sd
-        ON sd.SKOD = sk.[${col.id}] AND sd.RKOD = 0 AND sd.BedKod = 0
+        ON sd.[SKOD] = sk.[${col.id}] AND sd.[RKOD] = 0 AND sd.[BedKod] = 0
       LEFT JOIN ${catTable} p
         ON p.[${catIdCol}] = sk.[${stockGroupCol}]
       WHERE sk.[${col.id}] IS NOT NULL
@@ -258,20 +266,25 @@ export class KorgunMssqlAdapter extends BaseErpAdapter {
   async fetchCustomers(): Promise<ErpCustomer[]> {
     const pool = await this.getPool();
     const schema = this.cfg.schemaName ?? 'dbo';
-    const table = this.cfg.customerTable ?? 'CariKart';
+    const table = this.cfg.customerTable ?? 'Cari_Kart';
     const col = { ...DEFAULT_CUSTOMER_COLUMNS, ...(this.cfg.columns?.customer ?? {}) };
     const quotedTable = `[${schema}].[${table}]`;
 
+    // Opsiyonel kolonlar: bos olanlari SELECT'ten cikar
+    const selectCols: string[] = [
+      `[${col.id}] AS erp_id`,
+      `[${col.name}] AS name`,
+    ];
+    if (col.contact) selectCols.push(`[${col.contact}] AS contact_name`);
+    if (col.email) selectCols.push(`[${col.email}] AS email`);
+    if (col.phone) selectCols.push(`[${col.phone}] AS phone`);
+    if (col.address) selectCols.push(`[${col.address}] AS address`);
+    if (col.taxNumber) selectCols.push(`[${col.taxNumber}] AS tax_number`);
+    if (col.taxOffice) selectCols.push(`[${col.taxOffice}] AS tax_office`);
+
     const query = `
       SELECT
-        [${col.id}] AS erp_id,
-        [${col.name}] AS name,
-        [${col.contact}] AS contact_name,
-        [${col.email}] AS email,
-        [${col.phone}] AS phone,
-        [${col.address}] AS address,
-        [${col.taxNumber}] AS tax_number,
-        [${col.taxOffice}] AS tax_office
+        ${selectCols.join(', ')}
       FROM ${quotedTable}
       WHERE [${col.id}] IS NOT NULL
       ORDER BY [${col.id}]
