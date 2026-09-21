@@ -188,32 +188,22 @@ export const listProducts = async (
   const totalR = await totalReq.query(`SELECT COUNT(*) AS total FROM products p WHERE ${where.replace(/@(\w+)/g, '@$1')}`);
   const total = totalR.recordset[0]?.total ?? 0;
 
-  // imageCount + primaryImage (batch query — N+1 onlemek icin)
+  // imageCount + primaryImage (per-product query; N+1 tolere ediliyor — pageSize max 100)
   const productIds = itemsR.recordset.map((r) => r.id);
   const imageMap = new Map<string, { count: number; primary: { id: string; base64Data: string; mimeType: string } | null }>();
-  if (productIds.length > 0) {
-    const imgR = await pool.request()
+  for (const pid of productIds) {
+    const cntR = await pool.request()
       .input('tenantId', sql.UniqueIdentifier, tenantId)
-      .query(`SELECT product_id AS productId, id, base64_data AS base64Data, mime_type AS mimeType, is_primary AS isPrimary
+      .input('pid', sql.UniqueIdentifier, pid)
+      .query(`SELECT COUNT(*) AS c FROM product_images WHERE tenant_id = @tenantId AND product_id = @pid`);
+    const primR = await pool.request()
+      .input('tenantId', sql.UniqueIdentifier, tenantId)
+      .input('pid', sql.UniqueIdentifier, pid)
+      .query(`SELECT TOP 1 id, base64_data AS base64Data, mime_type AS mimeType
               FROM product_images
-              WHERE tenant_id = @tenantId AND product_id IN (${productIds.map((_, i) => `@p${i}`).join(',')})`,
-              ...productIds.reduce<sql.Request>((r, id, i) => r.input(`p${i}`, sql.UniqueIdentifier, id), pool.request()))
-      .catch(() => ({ recordset: [] as Array<{ productId: string; id: string; base64Data: string; mimeType: string; isPrimary: boolean }> }));
-    // Basitlestirilmis: ayri ayri query ile productId baz'inda
-    for (const pid of productIds) {
-      const cntR = await pool.request()
-        .input('tenantId', sql.UniqueIdentifier, tenantId)
-        .input('pid', sql.UniqueIdentifier, pid)
-        .query(`SELECT COUNT(*) AS c FROM product_images WHERE tenant_id = @tenantId AND product_id = @pid`);
-      const primR = await pool.request()
-        .input('tenantId', sql.UniqueIdentifier, tenantId)
-        .input('pid', sql.UniqueIdentifier, pid)
-        .query(`SELECT TOP 1 id, base64_data AS base64Data, mime_type AS mimeType
-                FROM product_images
-                WHERE tenant_id = @tenantId AND product_id = @pid AND is_primary = 1
-                ORDER BY sort_order ASC`);
-      imageMap.set(pid, { count: cntR.recordset[0]?.c ?? 0, primary: primR.recordset[0] ?? null });
-    }
+              WHERE tenant_id = @tenantId AND product_id = @pid AND is_primary = 1
+              ORDER BY sort_order ASC`);
+    imageMap.set(pid, { count: cntR.recordset[0]?.c ?? 0, primary: primR.recordset[0] ?? null });
   }
 
   const items = itemsR.recordset.map((r) => {
