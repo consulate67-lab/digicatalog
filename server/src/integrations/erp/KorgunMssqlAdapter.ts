@@ -242,6 +242,8 @@ export class KorgunMssqlAdapter extends BaseErpAdapter {
       ORDER BY sk.[${col.id}]
     `;
 
+    logger.info({ query, priceTip }, 'Korgün products sorgusu çalıştırılıyor');
+
     const result = await pool.request()
       .input('priceTip', sql.NVarChar, priceTip)
       .query(query);
@@ -290,6 +292,8 @@ export class KorgunMssqlAdapter extends BaseErpAdapter {
       WHERE [${col.id}] IS NOT NULL
       ORDER BY [${col.id}]
     `;
+
+    logger.info({ query }, 'Korgün customers sorgusu çalıştırılıyor');
 
     const result = await pool.request().query(query);
     const rows = result.recordset as Array<Record<string, unknown>>;
