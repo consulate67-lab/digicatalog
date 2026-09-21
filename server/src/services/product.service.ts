@@ -128,7 +128,7 @@ export interface ListProductsOptions {
 export const listProducts = async (
   tenantId: string,
   options: ListProductsOptions = {},
-): Promise<{ items: ProductDTO[]; total: number }> => {
+): Promise<{ items: ProductDTO[]; total: number; page: number; limit: number }> => {
   const pool = await getPool();
   const page = Math.max(1, options.page ?? 1);
   const pageSize = Math.min(MAX_PAGE_SIZE, Math.max(1, options.pageSize ?? DEFAULT_PAGE_SIZE));
@@ -211,7 +211,7 @@ export const listProducts = async (
     return toProductDTO(r, im.primary, im.count);
   });
 
-  return { items, total };
+  return { items, total, page, limit: pageSize };
 };
 
 export const getProduct = async (tenantId: string, id: string): Promise<ProductDetailDTO> => {

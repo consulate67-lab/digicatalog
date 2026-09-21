@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { authMiddleware } from '../middleware/auth';
 import * as productService from '../services/product.service';
 import { HttpError } from '../middleware/errorHandler';
+import { paginated } from '../utils/pagination';
 
 const router = Router();
 
@@ -69,7 +70,7 @@ router.get('/', async (req, res, next) => {
       sortBy: query.sortBy,
       sortOrder: query.sortOrder,
     });
-    res.json(result);
+    res.json(paginated(result.items, result.total, result.page, result.limit));
   } catch (err) {
     next(err);
   }

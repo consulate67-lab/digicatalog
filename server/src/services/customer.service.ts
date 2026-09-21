@@ -84,7 +84,7 @@ export interface ListCustomersOptions {
 export const listCustomers = async (
   tenantId: string,
   options: ListCustomersOptions = {},
-): Promise<{ items: CustomerDTO[]; total: number }> => {
+): Promise<{ items: CustomerDTO[]; total: number; page: number; limit: number }> => {
   const pool = await getPool();
   const page = Math.max(1, options.page ?? 1);
   const limit = Math.min(MAX_PAGE_SIZE, Math.max(1, options.limit ?? DEFAULT_PAGE_SIZE));
@@ -112,7 +112,7 @@ export const listCustomers = async (
     .input('tenantId', sql.UniqueIdentifier, tenantId)
     .query(`SELECT COUNT(*) AS total FROM customers WHERE ${where.replace(/@(\w+)/g, '@$1')}`);
   const total = totalR.recordset[0]?.total ?? 0;
-  return { items: itemsR.recordset.map(toDTO), total };
+  return { items: itemsR.recordset.map(toDTO), total, page, limit };
 };
 
 export const getCustomer = async (tenantId: string, id: string): Promise<CustomerDTO> => {
