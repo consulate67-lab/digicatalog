@@ -38,10 +38,12 @@ const DEFAULT_PRODUCT_COLUMNS = {
   sku: 'skod',
   name: 'tanim',                  // stokkart.tanim
   price: 'Fiyat',                 // S_SatFiy.Fiyat (from join)
-  currency: 'paracinsi',          // stokkart.paracinsi
+  // NOT: paracinsi/marka/birim Korgun stokkart'ta YOK. Opsiyonel — kullanici
+  // configSchema'dan gercek kolon adi set ederse SELECT'e eklenir, yoksa skip.
+  currency: '',                   // (default bos — TRY fallback normalizeCurrency'de)
   category: 'Tanim',              // P_STK_GRP.Tanim (from cross-db join)
-  brand: 'marka',                 // stokkart.marka (infer)
-  unit: 'birim',                  // stokkart.birim (infer)
+  brand: '',                      // (default bos — opsiyonel)
+  unit: '',                       // (default bos — opsiyonel)
   description: '',                // stokkart'ta description yok, skip
   picture: 'Picture',             // S_DetPicture.Picture
 } as const;
@@ -217,10 +219,8 @@ export class KorgunMssqlAdapter extends BaseErpAdapter {
       `sk.[${col.name}] AS name`,
     ];
     if (col.description) selectCols.push(`sk.[${col.description}] AS description`);
-    selectCols.push(
-      `ss.[${col.price}] AS price`,
-      `sk.[${col.currency}] AS currency`,
-    );
+    selectCols.push(`ss.[${col.price}] AS price`);
+    if (col.currency) selectCols.push(`sk.[${col.currency}] AS currency`);
     if (col.brand) selectCols.push(`sk.[${col.brand}] AS brand`);
     if (col.unit) selectCols.push(`sk.[${col.unit}] AS unit`);
     selectCols.push(
