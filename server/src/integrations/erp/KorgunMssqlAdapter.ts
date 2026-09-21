@@ -51,12 +51,15 @@ const DEFAULT_PRODUCT_COLUMNS = {
 const DEFAULT_CUSTOMER_COLUMNS = {
   id: 'ckod',                     // Cari_Kart.ckod
   name: 'cname',                  // Cari_Kart.cname
-  contact: 'Yetkili',             // Cari_Kart.Yetkili (infer)
-  email: 'Email',                 // (infer)
-  phone: 'Telefon',               // (infer)
-  address: 'Adres',               // (infer)
-  taxNumber: 'VergiNo',          // (infer)
-  taxOffice: 'VergiDairesi',      // (infer)
+  // NOT: Yetkili/Email/Telefon/Adres/VergiNo/VergiDairesi Korgun Cari_Kart'ta YOK
+  // veya farkli isimde. Opsiyonel — kullanici configSchema'dan gercek kolon
+  // adi set ederse SELECT'e eklenir. Yoksa skip (bos/null doner).
+  contact: '',
+  email: '',
+  phone: '',
+  address: '',
+  taxNumber: '',
+  taxOffice: '',
 } as const;
 
 export interface KorgunConfig {
