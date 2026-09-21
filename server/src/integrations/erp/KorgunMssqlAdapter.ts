@@ -195,8 +195,9 @@ export class KorgunMssqlAdapter extends BaseErpAdapter {
 
   async fetchProducts(): Promise<ErpProduct[]> {
     const pool = await this.getPool();
-    const schema = this.cfg.schemaName ?? 'dbo';
-    const table = this.cfg.productTable ?? 'stokkart';
+    // schemaName bos/null/whitespace olabilir — 'dbo' fallback. ?? sadece null/undefined icin fallback yapar, empty string icin degil.
+    const schema = this.cfg.schemaName?.trim() || 'dbo';
+    const table = this.cfg.productTable?.trim() || 'stokkart';
     const col = { ...DEFAULT_PRODUCT_COLUMNS, ...(this.cfg.columns?.product ?? {}) };
     const quotedTable = `[${schema}].[${table}]`;
     // priceTip string garanti olmali; undefined/empty sql.NVarChar validate'de Invalid string hatasi verir
@@ -268,8 +269,8 @@ export class KorgunMssqlAdapter extends BaseErpAdapter {
 
   async fetchCustomers(): Promise<ErpCustomer[]> {
     const pool = await this.getPool();
-    const schema = this.cfg.schemaName ?? 'dbo';
-    const table = this.cfg.customerTable ?? 'Cari_Kart';
+    const schema = this.cfg.schemaName?.trim() || 'dbo';
+    const table = this.cfg.customerTable?.trim() || 'Cari_Kart';
     const col = { ...DEFAULT_CUSTOMER_COLUMNS, ...(this.cfg.columns?.customer ?? {}) };
     const quotedTable = `[${schema}].[${table}]`;
 
