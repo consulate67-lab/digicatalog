@@ -62,8 +62,15 @@ export interface KorgunConfig {
   /** Ayrı port field (önerilen). Server field içinde port yoksa boş bırakılabilir. */
   port?: number;
   database: string;
-  user: string;
-  password: string;
+  user?: string;
+  password?: string;
+  /**
+   * Windows Authentication (NTLM/Kerberos) kullan.
+   * true ise user/password gerekmez; mevcut Windows kullanici bilgileri
+   * kullanilir. On-premise MSSQL icin "trustedConnection".
+   * SQL auth icin false (default) ve user/password zorunlu.
+   */
+  integratedSecurity?: boolean;
   schemaName?: string;
   encrypt?: boolean;
   trustServerCertificate?: boolean;
@@ -103,8 +110,12 @@ export class KorgunMssqlAdapter extends BaseErpAdapter {
     super(config);
     // Validation
     this.cfg = config as unknown as KorgunConfig;
-    if (!this.cfg.server || !this.cfg.database || !this.cfg.user) {
-      throw new Error('KorgunMssqlAdapter: server, database, user zorunludur');
+    if (!this.cfg.server || !this.cfg.database) {
+      throw new Error('KorgunMssqlAdapter: server, database zorunludur');
+    }
+    // SQL auth icin user zorunlu; Windows auth (integratedSecurity) icin degil
+    if (!this.cfg.integratedSecurity && !this.cfg.user) {
+      throw new Error('KorgunMssqlAdapter: SQL auth icin user zorunludur (Windows auth icin integratedSecurity=true kullanin)');
     }
   }
 
@@ -123,16 +134,22 @@ export class KorgunMssqlAdapter extends BaseErpAdapter {
     // formatları yanlışlıkla girebiliyor. Ayrıca config.port (önerilen) öncelikli.
     const { server: parsedServer, port: parsedPort } = parseServerField(this.cfg.server);
     const port = this.cfg.port ?? parsedPort;
+    const useIntegrated = this.cfg.integratedSecurity === true;
     const pool = new sql.ConnectionPool({
       server: parsedServer,
       ...(port !== undefined ? { port } : {}),
       database: this.cfg.database,
-      user: this.cfg.user,
-      password: this.cfg.password,
+      ...(useIntegrated
+        ? {}
+        : { user: this.cfg.user!, password: this.cfg.password! }),
       options: {
         encrypt: this.cfg.encrypt ?? false,
         trustServerCertificate: this.cfg.trustServerCertificate ?? true,
         enableArithAbort: true,
+        // Windows auth icin NTLM kullan, mevcut process'in user credential'i ile
+        ...(useIntegrated
+          ? { trustedConnection: true }
+          : {}),
       },
       connectionTimeout: this.cfg.connectionTimeout ?? 15_000,
       requestTimeout: this.cfg.requestTimeout ?? 60_000,
