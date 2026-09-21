@@ -199,7 +199,8 @@ export class KorgunMssqlAdapter extends BaseErpAdapter {
     const table = this.cfg.productTable ?? 'stokkart';
     const col = { ...DEFAULT_PRODUCT_COLUMNS, ...(this.cfg.columns?.product ?? {}) };
     const quotedTable = `[${schema}].[${table}]`;
-    const priceTip = this.cfg.priceTipCode ?? '361';
+    // priceTip string garanti olmali; undefined/empty sql.NVarChar validate'de Invalid string hatasi verir
+    const priceTip = String(this.cfg.priceTipCode ?? '361').trim() || '361';
 
     // Kategori tablosu (cross-DB olabilir, schema-qualified verilmeli)
     const catTable = this.cfg.categoryTable ?? 'korgun_parameter.dbo.P_STK_GRP';
