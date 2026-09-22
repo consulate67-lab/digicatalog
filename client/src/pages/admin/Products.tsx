@@ -216,7 +216,7 @@ const Products = () => {
                   <td className="px-4 py-3">
                     {p.primaryImage ? (
                       <img
-                        src={p.primaryImage.base64Data}
+                        src={`data:${p.primaryImage.mimeType};base64,${p.primaryImage.base64Data}`}
                         alt={p.name}
                         className="h-10 w-10 rounded object-cover"
                       />

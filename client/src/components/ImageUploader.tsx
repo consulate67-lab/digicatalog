@@ -164,7 +164,7 @@ const ImageUploader = ({ images, onChange, maxFiles = 10, disabled }: ImageUploa
               }`}
             >
               <img
-                src={img.base64Data}
+                src={`data:${img.mimeType};base64,${img.base64Data}`}
                 alt={`Resim ${i + 1}`}
                 className="h-full w-full object-cover"
               />

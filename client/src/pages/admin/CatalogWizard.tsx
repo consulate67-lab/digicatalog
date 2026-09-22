@@ -610,7 +610,7 @@ const CatalogWizard = ({ mode }: { mode: 'create' | 'edit' }) => {
                       <div className="flex items-start gap-3">
                         {p.primaryImage ? (
                           <img
-                            src={p.primaryImage.base64Data}
+                            src={`data:${p.primaryImage.mimeType};base64,${p.primaryImage.base64Data}`}
                             alt={p.name}
                             className="h-12 w-12 flex-shrink-0 rounded object-cover"
                           />
