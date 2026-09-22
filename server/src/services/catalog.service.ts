@@ -75,7 +75,7 @@ const CATALOG_FIELD_NAMES = ['sku', 'name', 'description', 'price', 'currency', 
 export const listCatalogs = async (
   tenantId: string,
   options: { status?: 'draft' | 'active' | 'archived'; search?: string; page?: number; pageSize?: number } = {},
-): Promise<{ items: CatalogSummaryDTO[]; total: number }> => {
+): Promise<{ items: CatalogSummaryDTO[]; total: number; page: number; limit: number }> => {
   const pool = await getPool();
   const page = Math.max(1, options.page ?? 1);
   const pageSize = Math.min(100, Math.max(1, options.pageSize ?? 20));
@@ -116,7 +116,7 @@ export const listCatalogs = async (
     createdAt: c.createdAt.toISOString(),
     updatedAt: c.updatedAt.toISOString(),
   }));
-  return { items, total };
+  return { items, total, page, limit: pageSize };
 };
 
 export const getCatalog = async (tenantId: string, id: string): Promise<CatalogDetailDTO> => {

@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { authMiddleware } from '../middleware/auth';
 import * as catalogService from '../services/catalog.service';
 import { HttpError } from '../middleware/errorHandler';
+import { paginated } from '../utils/pagination';
 
 // Catalog field izinli degerler (services/catalog.service.ts'te de tanimli,
 // Drizzle schema trash'e tasindi, burada local tutuyoruz)
@@ -73,8 +74,8 @@ router.get('/', async (req, res, next) => {
   try {
     if (!req.user) throw new HttpError(401, 'Kimlik doğrulama gerekli');
     const q = listQuerySchema.parse(req.query);
-    const catalogs = await catalogService.listCatalogs(req.user.tenantId, q);
-    res.json({ data: catalogs });
+    const result = await catalogService.listCatalogs(req.user.tenantId, q);
+    res.json(paginated(result.items, result.total, result.page, result.limit));
   } catch (err) {
     next(err);
   }
