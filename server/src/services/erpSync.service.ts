@@ -272,7 +272,7 @@ export const syncProducts = async (tenantId: string): Promise<SyncResult> => {
   // Ayri pass olarak: upsert logic'i bozmadan, sadece picture olan urunler icin.
   // REPLACE stratejisi: her sync'te product_id icin eski primary'ler silinir,
   // yenisi eklenir. (ERP'de resim degisti ise guncellenir.)
-  const imageUrlPrefix = process.env.ERP_IMAGE_URL_PREFIX ?? 'http://192.168.1.100:1903/';
+  const imageUrlPrefix = process.env.ERP_IMAGE_URL_PREFIX ?? 'http://192.168.2.67:1903/';
   let imagesInserted = 0;
   let imagesFailed = 0;
   let imagesSkipped = 0;
