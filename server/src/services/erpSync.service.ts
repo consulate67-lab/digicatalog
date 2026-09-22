@@ -272,7 +272,8 @@ export const syncProducts = async (tenantId: string): Promise<SyncResult> => {
   // Ayri pass olarak: upsert logic'i bozmadan, sadece picture olan urunler icin.
   // REPLACE stratejisi: her sync'te product_id icin eski primary'ler silinir,
   // yenisi eklenir. (ERP'de resim degisti ise guncellenir.)
-  const imageUrlPrefix = process.env.ERP_IMAGE_URL_PREFIX ?? 'http://192.168.2.67:1903/';
+  const imageUrlPrefix = process.env.ERP_IMAGE_URL_PREFIX ?? 'http://192.168.2.67:1983/';
+  const imageStripPrefix = process.env.ERP_IMAGE_PATH_PREFIX ?? '\\\\abkadc\\DATA\\RESİM\\';
   let imagesInserted = 0;
   let imagesFailed = 0;
   let imagesSkipped = 0;
@@ -280,7 +281,7 @@ export const syncProducts = async (tenantId: string): Promise<SyncResult> => {
     if (!p.sku || !p.name) continue;
     if (!p.picture) { imagesSkipped++; continue; }
 
-    const img = await fetchProductImage(p.picture, imageUrlPrefix);
+    const img = await fetchProductImage(p.picture, imageUrlPrefix, imageStripPrefix);
     if (!img) { imagesFailed++; continue; }
 
     try {
