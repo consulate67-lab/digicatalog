@@ -269,7 +269,7 @@ const ProductCard = ({ product, visibleFields, onClick }: ProductCardProps) => {
       <div className="aspect-square overflow-hidden bg-slate-100">
         {primary ? (
           <img
-            src={primary.base64Data}
+            src={`data:${primary.mimeType};base64,${primary.base64Data}`}
             alt={product.name}
             className="h-full w-full object-cover transition-transform group-hover:scale-105"
           />
@@ -353,7 +353,7 @@ const ProductModal = ({ product, visibleFields, onClose }: ProductModalProps) =>
           {currentImage ? (
             <>
               <img
-                src={currentImage.base64Data}
+                src={`data:${currentImage.mimeType};base64,${currentImage.base64Data}`}
                 alt={product.name}
                 className="max-h-[60vh] w-full object-contain md:max-h-[90vh]"
               />
