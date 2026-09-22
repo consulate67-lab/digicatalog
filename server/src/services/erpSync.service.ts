@@ -3,6 +3,7 @@ import { getPool } from '../config/database';
 import { HttpError } from '../middleware/errorHandler';
 import { logger } from '../utils/logger';
 import { PROVIDERS, getAdapter, type ProviderName } from '../integrations/erp/registry';
+import { fetchProductImage } from './imageSync';
 
 /**
  * ERP Sync service (raw mssql + KorgunMssqlAdapter).
@@ -24,6 +25,10 @@ export interface SyncResult {
   updated: number;
   skipped: number;
   errors: Array<{ sku?: string; customerId?: string; message: string }>;
+  /** ERP -> IIS -> DB'ye base64 olarak indirilen urun resmi sayıları. */
+  imagesInserted?: number;
+  imagesFailed?: number;
+  imagesSkipped?: number;
 }
 
 interface TenantErpConfig {
@@ -262,8 +267,55 @@ export const syncProducts = async (tenantId: string): Promise<SyncResult> => {
   }
 
   await adapter.close().catch(() => undefined);
+
+  // 3) Image sync pass — ERP Picture path'ten IIS'ten indir, base64 DB'ye yaz.
+  // Ayri pass olarak: upsert logic'i bozmadan, sadece picture olan urunler icin.
+  // REPLACE stratejisi: her sync'te product_id icin eski primary'ler silinir,
+  // yenisi eklenir. (ERP'de resim degisti ise guncellenir.)
+  const imageUrlPrefix = process.env.ERP_IMAGE_URL_PREFIX ?? 'http://192.168.1.100:1903/';
+  let imagesInserted = 0;
+  let imagesFailed = 0;
+  let imagesSkipped = 0;
+  for (const p of erpProducts) {
+    if (!p.sku || !p.name) continue;
+    if (!p.picture) { imagesSkipped++; continue; }
+
+    const img = await fetchProductImage(p.picture, imageUrlPrefix);
+    if (!img) { imagesFailed++; continue; }
+
+    try {
+      const pidR = await djiPool.request()
+        .input('tenantId', sql.UniqueIdentifier, tenantId)
+        .input('sku', sql.NVarChar, p.sku)
+        .query(`SELECT id FROM products WHERE tenant_id = @tenantId AND sku = @sku`);
+      const productId = pidR.recordset[0]?.id;
+      if (!productId) { imagesFailed++; continue; }
+
+      // REPLACE: eski resimleri sil, yeni primary ekle
+      await djiPool.request()
+        .input('tenantId', sql.UniqueIdentifier, tenantId)
+        .input('productId', sql.UniqueIdentifier, productId)
+        .query(`DELETE FROM product_images WHERE tenant_id = @tenantId AND product_id = @productId`);
+      await djiPool.request()
+        .input('tenantId', sql.UniqueIdentifier, tenantId)
+        .input('productId', sql.UniqueIdentifier, productId)
+        .input('base64Data', sql.NVarChar, img.base64Data)
+        .input('mimeType', sql.NVarChar, img.mimeType)
+        .input('fileSize', sql.Int, img.fileSize)
+        .query(`INSERT INTO product_images (tenant_id, product_id, base64_data, mime_type, file_size, is_primary, sort_order)
+                VALUES (@tenantId, @productId, @base64Data, @mimeType, @fileSize, 1, 0)`);
+      imagesInserted++;
+    } catch (err) {
+      imagesFailed++;
+      logger.warn({ sku: p.sku, err: (err as Error).message }, 'Image DB insert failed');
+    }
+  }
+  result.imagesInserted = imagesInserted;
+  result.imagesFailed = imagesFailed;
+  result.imagesSkipped = imagesSkipped;
+
   logger.info(
-    { tenantId, provider, inserted: result.inserted, updated: result.updated, skipped: result.skipped, errors: result.errors.length, categories: categoryNameToId.size },
+    { tenantId, provider, inserted: result.inserted, updated: result.updated, skipped: result.skipped, errors: result.errors.length, categories: categoryNameToId.size, imagesInserted, imagesFailed, imagesSkipped },
     'ERP urun senkronizasyonu tamamlandi',
   );
   return result;
