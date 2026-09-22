@@ -61,7 +61,7 @@ const filterQuerySchema = z.object({
   priceMin: z.coerce.number().nonnegative().optional(),
   priceMax: z.coerce.number().nonnegative().optional(),
   excludeInCatalog: z.enum(['true', 'false']).optional(),
-  limit: z.coerce.number().int().min(1).max(100).optional(),
+  limit: z.coerce.number().int().min(1).max(2000).optional(),
 });
 
 // === Routes ===

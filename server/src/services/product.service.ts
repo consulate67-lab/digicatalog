@@ -12,7 +12,7 @@ import { logger } from '../utils/logger';
  */
 
 const DEFAULT_PAGE_SIZE = 20;
-const MAX_PAGE_SIZE = 100;
+const MAX_PAGE_SIZE = 2000;
 const MAX_BASE64_LENGTH = 15_000_000;
 
 const ALLOWED_IMAGE_MIMES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'] as const;

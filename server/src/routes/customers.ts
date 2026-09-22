@@ -12,7 +12,7 @@ router.use(authMiddleware);
 
 const listQuerySchema = z.object({
   page: z.coerce.number().int().min(1).optional(),
-  limit: z.coerce.number().int().min(1).max(100).optional(),
+  limit: z.coerce.number().int().min(1).max(2000).optional(),
   search: z.string().min(1).max(100).optional(),
   source: z.enum(['manual', 'excel', 'erp']).optional(),
   isActive: z.enum(['true', 'false']).optional(),

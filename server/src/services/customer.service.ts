@@ -9,7 +9,7 @@ import { HttpError } from '../middleware/errorHandler';
  */
 
 const DEFAULT_PAGE_SIZE = 20;
-const MAX_PAGE_SIZE = 100;
+const MAX_PAGE_SIZE = 2000;
 
 export interface CustomerDTO {
   id: string;
