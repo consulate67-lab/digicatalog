@@ -38,7 +38,7 @@ const FIELD_LABELS: Record<string, string> = {
   images: 'Gorseller',
 };
 
-export const getViewerCatalog = async (catalogId: string): Promise<{
+export const getCatalogForViewer = async (catalogId: string): Promise<{
   catalog: ViewerCatalogInfo;
   fields: ViewerFieldConfig[];
   items: Array<{
