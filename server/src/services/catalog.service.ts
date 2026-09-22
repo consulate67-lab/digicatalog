@@ -4,10 +4,11 @@ import { HttpError } from '../middleware/errorHandler';
 import { logger } from '../utils/logger';
 
 /**
- * Catalog service. Minimal raw mssql versiyonu (Drizzle ORM'den gecildi).
+ * Catalog service. Raw mssql ile multi-tenant row-level isolation.
  *
- * Sadece list + get implement edilmis (demo ve viewer icin yeterli).
- * Create/update/delete/customer/items/field-config: TODO (ileride eklenebilir).
+ * Tum write tarafi (create/update/delete + assignCustomers + addItem +
+ * fieldConfig + filterProductsForCatalog) bu versiyonda implement edildi.
+ * Onceki "minimal" stub'lar kaldirildi.
  */
 
 export interface CatalogSummaryDTO {
@@ -70,7 +71,28 @@ export interface CatalogDetailDTO {
   fieldConfig: Array<{ fieldName: string; isVisible: boolean; sortOrder: number }>;
 }
 
+export interface CatalogInput {
+  name: string;
+  description?: string | null;
+  status?: 'draft' | 'active' | 'archived';
+}
+
+export interface CatalogItemInput {
+  productId: string;
+  customPrice?: number | null;
+  customNotes?: string | null;
+  sortOrder?: number;
+}
+
+export interface FieldConfigInput {
+  fieldName: string;
+  isVisible: boolean;
+  sortOrder: number;
+}
+
 const CATALOG_FIELD_NAMES = ['sku', 'name', 'description', 'price', 'currency', 'category', 'brand', 'unit', 'notes', 'images'] as const;
+
+// === List ===
 
 export const listCatalogs = async (
   tenantId: string,
@@ -119,6 +141,8 @@ export const listCatalogs = async (
   return { items, total, page, limit: pageSize };
 };
 
+// === Get (detail) ===
+
 export const getCatalog = async (tenantId: string, id: string): Promise<CatalogDetailDTO> => {
   const pool = await getPool();
   const cR = await pool.request()
@@ -130,7 +154,6 @@ export const getCatalog = async (tenantId: string, id: string): Promise<CatalogD
   const catalog = cR.recordset[0];
   if (!catalog) throw new HttpError(404, 'Katalog bulunamadi');
 
-  // Items + product + image
   const itemsR = await pool.request()
     .input('catalogId', sql.UniqueIdentifier, id)
     .query(`SELECT ci.id, ci.product_id AS productId, ci.sort_order AS sortOrder,
@@ -147,7 +170,6 @@ export const getCatalog = async (tenantId: string, id: string): Promise<CatalogD
      WHERE ci.catalog_id = @catalogId
      ORDER BY ci.sort_order`);
 
-  // Customers
   const custR = await pool.request()
     .input('catalogId', sql.UniqueIdentifier, id)
     .query(`SELECT cc.id, cc.customer_id AS customerId, cc.created_at AS createdAt,
@@ -157,7 +179,6 @@ export const getCatalog = async (tenantId: string, id: string): Promise<CatalogD
      WHERE cc.catalog_id = @catalogId
      ORDER BY c.name`);
 
-  // Field config
   const fcR = await pool.request()
     .input('catalogId', sql.UniqueIdentifier, id)
     .query(`SELECT field_name AS fieldName, is_visible AS isVisible, sort_order AS sortOrder
@@ -212,28 +233,365 @@ export const getCatalog = async (tenantId: string, id: string): Promise<CatalogD
   };
 };
 
-// === Stub'lar (ileride implement edilecek) ===
+// === Create ===
 
-export const createCatalog = async (): Promise<never> => {
-  throw new HttpError(501, 'createCatalog henuz implement edilmedi');
-};
-export const updateCatalog = async (): Promise<never> => {
-  throw new HttpError(501, 'updateCatalog henuz implement edilmedi');
-};
-export const deleteCatalog = async (): Promise<never> => {
-  throw new HttpError(501, 'deleteCatalog henuz implement edilmedi');
-};
-export const addCatalogItem = async (): Promise<never> => {
-  throw new HttpError(501, 'addCatalogItem henuz implement edilmedi');
-};
-export const removeCatalogItem = async (): Promise<never> => {
-  throw new HttpError(501, 'removeCatalogItem henuz implement edilmedi');
-};
-export const assignCatalogCustomers = async (): Promise<never> => {
-  throw new HttpError(501, 'assignCatalogCustomers henuz implement edilmedi');
-};
-export const updateFieldConfig = async (): Promise<never> => {
-  throw new HttpError(501, 'updateFieldConfig henuz implement edilmedi');
+export const createCatalog = async (
+  tenantId: string,
+  userId: string,
+  input: CatalogInput,
+): Promise<CatalogDetailDTO> => {
+  const pool = await getPool();
+  const r = await pool.request()
+    .input('tenantId', sql.UniqueIdentifier, tenantId)
+    .input('createdBy', sql.UniqueIdentifier, userId)
+    .input('name', sql.NVarChar, input.name)
+    .input('description', sql.NVarChar, input.description ?? null)
+    .input('status', sql.NVarChar, input.status ?? 'draft')
+    .query(`INSERT INTO catalogs (tenant_id, name, description, status, created_by)
+            OUTPUT INSERTED.id
+            VALUES (@tenantId, @name, @description, @status, @createdBy)`);
+  const catalogId = r.recordset[0].id;
+
+  // Default field config: 10 alan visible, sort_order = array index
+  const tx = new sql.Transaction(pool);
+  await tx.begin();
+  try {
+    for (let i = 0; i < CATALOG_FIELD_NAMES.length; i++) {
+      await tx.request()
+        .input('catalogId', sql.UniqueIdentifier, catalogId)
+        .input('fieldName', sql.NVarChar, CATALOG_FIELD_NAMES[i])
+        .input('isVisible', sql.Bit, true)
+        .input('sortOrder', sql.Int, i)
+        .query(`INSERT INTO catalog_field_config (catalog_id, field_name, is_visible, sort_order)
+                VALUES (@catalogId, @fieldName, @isVisible, @sortOrder)`);
+    }
+    await tx.commit();
+  } catch (err) {
+    await tx.rollback();
+    throw err;
+  }
+
+  return getCatalog(tenantId, catalogId);
 };
 
-logger.info('catalog.service.ts (raw mssql, minimal) yuklendi');
+// === Update ===
+
+export const updateCatalog = async (
+  tenantId: string,
+  id: string,
+  input: Partial<CatalogInput>,
+): Promise<CatalogDetailDTO> => {
+  const pool = await getPool();
+  const ex = await pool.request()
+    .input('tenantId', sql.UniqueIdentifier, tenantId)
+    .input('id', sql.UniqueIdentifier, id)
+    .query(`SELECT id FROM catalogs WHERE id = @id AND tenant_id = @tenantId`);
+  if (!ex.recordset[0]) throw new HttpError(404, 'Katalog bulunamadi');
+
+  await pool.request()
+    .input('tenantId', sql.UniqueIdentifier, tenantId)
+    .input('id', sql.UniqueIdentifier, id)
+    .input('name', sql.NVarChar, input.name ?? null)
+    .input('description', sql.NVarChar, input.description ?? null)
+    .input('status', sql.NVarChar, input.status ?? null)
+    .query(`UPDATE catalogs
+            SET name = COALESCE(@name, name),
+                description = COALESCE(@description, description),
+                status = COALESCE(@status, status),
+                updated_at = getdate()
+            WHERE id = @id AND tenant_id = @tenantId`);
+  return getCatalog(tenantId, id);
+};
+
+// === Delete (CASCADE handled by FK) ===
+
+export const deleteCatalog = async (tenantId: string, id: string): Promise<void> => {
+  const pool = await getPool();
+  const r = await pool.request()
+    .input('tenantId', sql.UniqueIdentifier, tenantId)
+    .input('id', sql.UniqueIdentifier, id)
+    .query(`DELETE FROM catalogs WHERE id = @id AND tenant_id = @tenantId`);
+  if (r.rowsAffected[0] === 0) throw new HttpError(404, 'Katalog bulunamadi');
+};
+
+// === Items ===
+
+export const addItem = async (
+  tenantId: string,
+  catalogId: string,
+  input: CatalogItemInput,
+): Promise<CatalogItemDTO> => {
+  const pool = await getPool();
+  // Katalog var mi ve tenant'a mi ait?
+  const ex = await pool.request()
+    .input('tenantId', sql.UniqueIdentifier, tenantId)
+    .input('id', sql.UniqueIdentifier, catalogId)
+    .query(`SELECT id FROM catalogs WHERE id = @id AND tenant_id = @tenantId`);
+  if (!ex.recordset[0]) throw new HttpError(404, 'Katalog bulunamadi');
+
+  // max sort_order + 1, ya da input.sortOrder
+  let sortOrder = input.sortOrder;
+  if (sortOrder === undefined) {
+    const maxR = await pool.request()
+      .input('catalogId', sql.UniqueIdentifier, catalogId)
+      .query(`SELECT ISNULL(MAX(sort_order), -1) + 1 AS nextSort FROM catalog_items WHERE catalog_id = @catalogId`);
+    sortOrder = maxR.recordset[0].nextSort;
+  }
+
+  const r = await pool.request()
+    .input('catalogId', sql.UniqueIdentifier, catalogId)
+    .input('productId', sql.UniqueIdentifier, input.productId)
+    .input('sortOrder', sql.Int, sortOrder)
+    .input('customPrice', sql.Decimal(12, 2),
+      input.customPrice !== undefined && input.customPrice !== null ? String(input.customPrice) : null)
+    .input('customNotes', sql.NVarChar, input.customNotes ?? null)
+    .query(`INSERT INTO catalog_items (catalog_id, product_id, sort_order, custom_price, custom_notes)
+            OUTPUT INSERTED.id
+            VALUES (@catalogId, @productId, @sortOrder, @customPrice, @customNotes)`);
+  const itemId = r.recordset[0].id;
+
+  // Touch catalog updated_at
+  await pool.request()
+    .input('id', sql.UniqueIdentifier, catalogId)
+    .query(`UPDATE catalogs SET updated_at = getdate() WHERE id = @id`);
+
+  // Return full DTO
+  const itemR = await pool.request()
+    .input('id', sql.UniqueIdentifier, itemId)
+    .query(`SELECT ci.id, ci.product_id AS productId, ci.sort_order AS sortOrder,
+            ci.custom_price AS customPrice, ci.custom_notes AS customNotes,
+            p.id AS pId, p.sku, p.name AS pName, p.description AS pDescription,
+            CAST(p.price AS VARCHAR) AS pPrice, p.currency AS pCurrency, p.brand, p.unit, p.notes,
+            p.category_id AS pCategoryId, cat.name AS pCategoryName,
+            (SELECT TOP 1 base64_data FROM product_images WHERE product_id = p.id AND is_primary = 1) AS primaryImageData,
+            (SELECT TOP 1 mime_type FROM product_images WHERE product_id = p.id AND is_primary = 1) AS primaryImageMime
+     FROM catalog_items ci
+     JOIN products p ON p.id = ci.product_id
+     LEFT JOIN categories cat ON cat.id = p.category_id
+     WHERE ci.id = @id`);
+  const r2 = itemR.recordset[0];
+  if (!r2) throw new HttpError(500, 'Eklenen urun hemen okunamadi');
+  return {
+    id: r2.id,
+    productId: r2.productId,
+    sortOrder: r2.sortOrder,
+    customPrice: r2.customPrice ? Number(r2.customPrice) : null,
+    customNotes: r2.customNotes,
+    product: {
+      id: r2.pId,
+      sku: r2.sku,
+      name: r2.pName,
+      description: r2.pDescription,
+      price: Number(r2.pPrice),
+      currency: r2.pCurrency,
+      category: r2.pCategoryId ? { id: r2.pCategoryId, name: r2.pCategoryName! } : null,
+      brand: r2.brand,
+      unit: r2.unit,
+      notes: r2.notes,
+      primaryImage: r2.primaryImageData
+        ? { base64Data: r2.primaryImageData, mimeType: r2.primaryImageMime! }
+        : null,
+    },
+  };
+};
+
+export const removeItem = async (tenantId: string, catalogId: string, itemId: string): Promise<void> => {
+  const pool = await getPool();
+  const r = await pool.request()
+    .input('tenantId', sql.UniqueIdentifier, tenantId)
+    .input('catalogId', sql.UniqueIdentifier, catalogId)
+    .input('itemId', sql.UniqueIdentifier, itemId)
+    .query(`DELETE ci
+            FROM catalog_items ci
+            JOIN catalogs c ON c.id = ci.catalog_id
+            WHERE ci.id = @itemId AND ci.catalog_id = @catalogId AND c.tenant_id = @tenantId`);
+  if (r.rowsAffected[0] === 0) throw new HttpError(404, 'Urun bulunamadi');
+  await pool.request()
+    .input('id', sql.UniqueIdentifier, catalogId)
+    .query(`UPDATE catalogs SET updated_at = getdate() WHERE id = @id`);
+};
+
+// === Customers ===
+
+export const assignCustomers = async (
+  tenantId: string,
+  catalogId: string,
+  customerIds: string[],
+): Promise<{ added: number; skipped: number }> => {
+  const pool = await getPool();
+  // Katalog var mi?
+  const ex = await pool.request()
+    .input('tenantId', sql.UniqueIdentifier, tenantId)
+    .input('id', sql.UniqueIdentifier, catalogId)
+    .query(`SELECT id FROM catalogs WHERE id = @id AND tenant_id = @tenantId`);
+  if (!ex.recordset[0]) throw new HttpError(404, 'Katalog bulunamadi');
+
+  // Mevcut atamalari cek
+  const existingR = await pool.request()
+    .input('catalogId', sql.UniqueIdentifier, catalogId)
+    .query(`SELECT customer_id FROM catalog_customers WHERE catalog_id = @catalogId`);
+  const existing = new Set<string>(existingR.recordset.map((r) => r.customer_id as string));
+
+  let added = 0;
+  let skipped = 0;
+  for (const customerId of customerIds) {
+    if (existing.has(customerId)) {
+      skipped++;
+      continue;
+    }
+    await pool.request()
+      .input('catalogId', sql.UniqueIdentifier, catalogId)
+      .input('customerId', sql.UniqueIdentifier, customerId)
+      .query(`INSERT INTO catalog_customers (catalog_id, customer_id) VALUES (@catalogId, @customerId)`);
+    added++;
+    existing.add(customerId);
+  }
+
+  if (added > 0) {
+    await pool.request()
+      .input('id', sql.UniqueIdentifier, catalogId)
+      .query(`UPDATE catalogs SET updated_at = getdate() WHERE id = @id`);
+  }
+  return { added, skipped };
+};
+
+export const removeCustomer = async (
+  tenantId: string,
+  catalogId: string,
+  customerId: string,
+): Promise<void> => {
+  const pool = await getPool();
+  const r = await pool.request()
+    .input('tenantId', sql.UniqueIdentifier, tenantId)
+    .input('catalogId', sql.UniqueIdentifier, catalogId)
+    .input('customerId', sql.UniqueIdentifier, customerId)
+    .query(`DELETE cc
+            FROM catalog_customers cc
+            JOIN catalogs c ON c.id = cc.catalog_id
+            WHERE cc.customer_id = @customerId AND cc.catalog_id = @catalogId AND c.tenant_id = @tenantId`);
+  if (r.rowsAffected[0] === 0) throw new HttpError(404, 'Musteri atamasi bulunamadi');
+  await pool.request()
+    .input('id', sql.UniqueIdentifier, catalogId)
+    .query(`UPDATE catalogs SET updated_at = getdate() WHERE id = @id`);
+};
+
+// === Field config ===
+
+export const updateFieldConfig = async (
+  tenantId: string,
+  catalogId: string,
+  fields: FieldConfigInput[],
+): Promise<FieldConfigInput[]> => {
+  const pool = await getPool();
+  const ex = await pool.request()
+    .input('tenantId', sql.UniqueIdentifier, tenantId)
+    .input('id', sql.UniqueIdentifier, catalogId)
+    .query(`SELECT id FROM catalogs WHERE id = @id AND tenant_id = @tenantId`);
+  if (!ex.recordset[0]) throw new HttpError(404, 'Katalog bulunamadi');
+
+  // REPLACE: DELETE + INSERT (transaction ile atomik)
+  const tx = new sql.Transaction(pool);
+  await tx.begin();
+  try {
+    await tx.request()
+      .input('catalogId', sql.UniqueIdentifier, catalogId)
+      .query(`DELETE FROM catalog_field_config WHERE catalog_id = @catalogId`);
+    for (const f of fields) {
+      await tx.request()
+        .input('catalogId', sql.UniqueIdentifier, catalogId)
+        .input('fieldName', sql.NVarChar, f.fieldName)
+        .input('isVisible', sql.Bit, f.isVisible)
+        .input('sortOrder', sql.Int, f.sortOrder)
+        .query(`INSERT INTO catalog_field_config (catalog_id, field_name, is_visible, sort_order)
+                VALUES (@catalogId, @fieldName, @isVisible, @sortOrder)`);
+    }
+    await tx.commit();
+  } catch (err) {
+    await tx.rollback();
+    throw err;
+  }
+  await pool.request()
+    .input('id', sql.UniqueIdentifier, catalogId)
+    .query(`UPDATE catalogs SET updated_at = getdate() WHERE id = @id`);
+  return fields;
+};
+
+// === Filter products for catalog wizard ===
+
+export interface CatalogWizardProductDTO {
+  id: string;
+  sku: string;
+  name: string;
+  price: number;
+  currency: string;
+  category: { id: string; name: string } | null;
+  brand: string | null;
+  unit: string | null;
+  primaryImage: { base64Data: string; mimeType: string } | null;
+  inCurrentCatalog: boolean;
+}
+
+export const filterProductsForCatalog = async (
+  tenantId: string,
+  catalogId: string,
+  options: {
+    search?: string;
+    categoryId?: string;
+    brand?: string;
+    priceMin?: number;
+    priceMax?: number;
+    excludeInCatalog?: boolean;
+    limit?: number;
+  },
+): Promise<CatalogWizardProductDTO[]> => {
+  const pool = await getPool();
+  const limit = options.limit ?? 50;
+
+  let where = 'p.tenant_id = @tenantId AND p.is_active = 1';
+  if (options.search) where += ` AND (LOWER(p.name) LIKE @search OR LOWER(p.sku) LIKE @search)`;
+  if (options.categoryId) where += ' AND p.category_id = @categoryId';
+  if (options.brand) where += ` AND LOWER(p.brand) LIKE @brand`;
+  if (options.priceMin !== undefined) where += ' AND p.price >= @priceMin';
+  if (options.priceMax !== undefined) where += ' AND p.price <= @priceMax';
+  let excludeClause = '';
+  if (options.excludeInCatalog) {
+    excludeClause = ` AND NOT EXISTS (SELECT 1 FROM catalog_items ci WHERE ci.product_id = p.id AND ci.catalog_id = @catalogId)`;
+  }
+
+  const r = await pool.request()
+    .input('tenantId', sql.UniqueIdentifier, tenantId)
+    .input('catalogId', sql.UniqueIdentifier, catalogId)
+    .input('search', sql.NVarChar, options.search ? `%${options.search.toLowerCase()}%` : '')
+    .input('categoryId', sql.UniqueIdentifier, options.categoryId ?? null)
+    .input('brand', sql.NVarChar, options.brand ? `%${options.brand.toLowerCase()}%` : '')
+    .input('priceMin', sql.Decimal(12, 2), options.priceMin ?? null)
+    .input('priceMax', sql.Decimal(12, 2), options.priceMax ?? null)
+    .input('limit', sql.Int, limit)
+    .query(`SELECT p.id, p.sku, p.name, CAST(p.price AS VARCHAR) AS price, p.currency,
+            p.brand, p.unit, p.category_id AS categoryId, cat.name AS categoryName,
+            (SELECT TOP 1 base64_data FROM product_images WHERE product_id = p.id AND is_primary = 1) AS primaryImageData,
+            (SELECT TOP 1 mime_type FROM product_images WHERE product_id = p.id AND is_primary = 1) AS primaryImageMime,
+            CASE WHEN EXISTS (SELECT 1 FROM catalog_items ci WHERE ci.product_id = p.id AND ci.catalog_id = @catalogId) THEN 1 ELSE 0 END AS inCurrentCatalog
+     FROM products p
+     LEFT JOIN categories cat ON cat.id = p.category_id
+     WHERE ${where} ${excludeClause}
+     ORDER BY p.name
+     OFFSET 0 ROWS FETCH NEXT @limit ROWS ONLY`);
+
+  return r.recordset.map((r2) => ({
+    id: r2.id,
+    sku: r2.sku,
+    name: r2.name,
+    price: Number(r2.price),
+    currency: r2.currency,
+    category: r2.categoryId ? { id: r2.categoryId, name: r2.categoryName! } : null,
+    brand: r2.brand,
+    unit: r2.unit,
+    primaryImage: r2.primaryImageData
+      ? { base64Data: r2.primaryImageData, mimeType: r2.primaryImageMime! }
+      : null,
+    inCurrentCatalog: Boolean(r2.inCurrentCatalog),
+  }));
+};
+
+logger.info('catalog.service.ts (raw mssql, write tarafi) yuklendi');
