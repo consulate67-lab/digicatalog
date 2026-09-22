@@ -238,16 +238,12 @@ export class KorgunMssqlAdapter extends BaseErpAdapter {
       FROM ${quotedTable} sk
       LEFT JOIN [${schema}].[S_SatFiy] ss
         ON ss.[SKOD] = sk.[${col.id}] AND ss.[RKOD] = 0 AND ss.[BedKod] = 0 AND ss.[Tip] = @priceTip
-      LEFT JOIN [${schema}].[S_SatFiy] ss
-        ON ss.[SKOD] = sk.[${col.id}] AND ss.[RKOD] = 0 AND ss.[BedKod] = 0 AND ss.[Tip] = @priceTip
       OUTER APPLY (
         SELECT TOP 1 sd.Picture
         FROM [${schema}].[S_DetPicture] sd
         WHERE sd.SKOD = sk.[${col.id}] AND sd.Picture IS NOT NULL AND LEN(LTRIM(RTRIM(sd.Picture))) > 0
         ORDER BY sd.SKOD
       ) sd
-      LEFT JOIN ${catTable} p
-        ON p.[${catIdCol}] = sk.[${stockGroupCol}]
       LEFT JOIN ${catTable} p
         ON p.[${catIdCol}] = sk.[${stockGroupCol}]
       WHERE sk.[${col.id}] IS NOT NULL
