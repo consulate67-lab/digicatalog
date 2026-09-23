@@ -4,11 +4,15 @@ import path from 'path';
 import { HttpError } from '../middleware/errorHandler';
 import { logger } from '../utils/logger';
 import { getCatalog } from './catalog.service';
+import { resolveTemplate } from './pdfTemplateResolver';
+import { resolvePageSize, resolveOrientation } from './pdfLayoutDefaults';
+import { upsertCatalogPdfSettings } from './catalogPdfSettings.service';
 
 /**
  * PDF service — katalog PDF uretimi (pdfkit).
  *
  * Faz 7 — Korgun ERP entegrasyonu sonrasi pdfkit implementasyonu.
+ * Faz 9 — template-aware refactor (templateId opsiyonel).
  *
  * Endpoint'ler (server/src/routes/pdf.ts):
  * - POST /api/catalogs/:id/pdf/full       — tum katalog
@@ -24,6 +28,10 @@ export interface CatalogPdfOptions {
   productIds?: string[];
   includeCover?: boolean;
   includeToc?: boolean;
+  /** Faz 9.3: template ID ile template-aware render. Yoksa default layout. */
+  templateId?: string | null;
+  /** Faz 9.3: catalog_pdf_settings'ten field toggles (logo/tel/email/...). */
+  catalogSettings?: Awaited<ReturnType<typeof upsertCatalogPdfSettings>> | null;
 }
 
 /**
@@ -47,10 +55,26 @@ export const generateCatalogPdf = async (
   const detail = await getCatalog(tenantId, catalogId);
   if (!detail) throw new HttpError(404, 'Katalog bulunamadi');
 
-  // 2) PDF dokumani olustur
+  // 1b) Faz 9.3: Template resolution (templateId verilmisse DB'den oku, default'a dusur).
+  // Render logic Aşama 9.3.2'de tamamen template-aware olacak; burada sadece
+  // setup (page size, orientation, debug log).
+  const resolved = await resolveTemplate(tenantId, options.templateId);
+  logger.debug(
+    {
+      catalogId,
+      templateId: resolved.templateId,
+      templateSlug: resolved.templateSlug,
+      pageSize: resolved.layout.pageSize,
+      orientation: resolved.layout.orientation,
+    },
+    'PDF template resolved',
+  );
+
+  // 2) PDF dokumani olustur (Faz 9.3.1: page size + orientation template'den)
   const doc = new PDFDocument({
-    size: 'A4',
-    margin: 50,
+    size: resolvePageSize(resolved.layout),
+    layout: resolveOrientation(resolved.layout) ? 'landscape' : 'portrait',
+    margin: 50, // Aşama 9.3.2'de resolved.layout.margin ile degistirilecek
     info: {
       Title: detail.name,
       Author: 'DijiCatalog',
