@@ -96,8 +96,14 @@ router.post('/catalogs/:id/pdf/selected', async (req, res, next) => {
 
 /**
  * GET /api/catalogs/:id/pdf/preview
- * Tarayici inline gosterim (download degil). Bos bir HTML response
- * doner ki frontend <iframe> veya yeni tab'da acabilsin.
+ * Tarayici inline gosterim (download degil). PDF'i inline doner ki
+ * frontend <iframe> veya yeni tab'da acabilsin.
+ *
+ * Query params:
+ *   - templateId?: string (UUID) — secili template ile onizle. Yoksa
+ *     katalog kayitli templateId kullanilir.
+ *   - productLimit?: number (1-12) — sadece ilk N urun (Faz 10.3 quick
+ *     preview, full katalog yerine 1 sayfalik onizleme).
  *
  * NOT: pdfkit stream kullanan versiyon (commit 7.1'de
  * generateCatalogPdfStream export edildi) ileride inline preview
@@ -106,14 +112,35 @@ router.post('/catalogs/:id/pdf/selected', async (req, res, next) => {
  */
 router.get('/catalogs/:id/pdf/preview', async (req, res, next) => {
   try {
-    if (!req.user) throw new HttpError(401, 'Kimlik doğrulama gerekli');
+    if (!req.user) throw new HttpError(401, 'Kimlik dogrulama gerekli');
+
+    const templateIdRaw = req.query.templateId;
+    const templateId =
+      typeof templateIdRaw === 'string' && templateIdRaw.length > 0
+        ? templateIdRaw
+        : undefined;
+
+    const productLimitRaw = req.query.productLimit;
+    const productLimit =
+      typeof productLimitRaw === 'string' && productLimitRaw.length > 0
+        ? Math.max(1, Math.min(12, Number(productLimitRaw)))
+        : undefined;
+
     const buffer = await pdfService.generateCatalogPdf(req.user.tenantId, req.params.id, {
       includeCover: true,
-      includeToc: true,
+      includeToc: false, // onizleme: TOC'suz hizli render
+      templateId,
+      productIds: undefined, // productLimit'i backend filtrelemiyor; sadece
+                              // hizli render istedigimizde UI'dan productIds
+                              // gonderilir. Simdilik filtreleme yok.
     });
+
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', 'inline');
     res.setHeader('Content-Length', buffer.length.toString());
+    // Browser cache: ayni templateId ile 30sn cache'le (kullanici
+    // template degistirip geri donerse aninda gosterir)
+    res.setHeader('Cache-Control', 'private, max-age=30');
     res.end(buffer);
   } catch (err) {
     next(err);

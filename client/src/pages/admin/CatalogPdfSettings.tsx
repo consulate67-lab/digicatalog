@@ -14,6 +14,7 @@ import {
   Layout as LayoutIcon,
   Image as ImageIcon,
   Palette,
+  Eye,
 } from 'lucide-react';
 import api from '../../lib/api';
 
@@ -199,6 +200,36 @@ const CatalogPdfSettings = () => {
     }
   };
 
+  /**
+   * PDF onizleme (Faz 10.3). Saved settings ile sync PDF olusturur
+   * ve yeni sekmede acar. Iframe yerine blob URL + window.open yaklasimi:
+   * auth Bearer header korunur, browser native PDF viewer gosterir.
+   *
+   * NOT: Draft degisiklikler henuz DB'ye yazilmadigi icin preview
+   * sadece SAVED template'i + saved layout override'lari kullanir.
+   */
+  const handlePreview = async () => {
+    if (!current || !current.templateId) return;
+    try {
+      const response = await api.get<Blob>(
+        `/catalogs/${catalogId}/pdf/preview?templateId=${encodeURIComponent(current.templateId)}`,
+        { responseType: 'blob', timeout: 60_000 },
+      );
+      const blob = response.data;
+      const url = window.URL.createObjectURL(blob);
+      const win = window.open(url, '_blank', 'noopener,noreferrer');
+      if (!win) {
+        // Popup engellendiyse fallback: indir
+        alert('Pop-up engellenmis gorunuyor. Lutfen pop-up izni verin veya tekrar deneyin.');
+      } else {
+        // Tab kapandiginda blob URL'yi revoke et (1dk sonra)
+        setTimeout(() => window.URL.revokeObjectURL(url), 60_000);
+      }
+    } catch (err) {
+      alert('PDF onizleme basarisiz: ' + ((err as Error).message ?? 'bilinmeyen'));
+    }
+  };
+
   // === Shares ===
   const sharesQuery = useQuery({
     queryKey: ['shares', catalogId],
@@ -273,13 +304,23 @@ const CatalogPdfSettings = () => {
             <p className="text-sm text-slate-500">Katalog: {catalogId.slice(0, 8)}...</p>
           </div>
         </div>
-        <button
-          onClick={handleDownloadPdf}
-          className="inline-flex items-center gap-2 rounded-md bg-brand-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-700"
-        >
-          <FileText className="h-4 w-4" />
-          PDF İndir
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handlePreview}
+            className="inline-flex items-center gap-2 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            title="PDF'i yeni sekmede onizle (saved settings)"
+          >
+            <Eye className="h-4 w-4" />
+            Önizle
+          </button>
+          <button
+            onClick={handleDownloadPdf}
+            className="inline-flex items-center gap-2 rounded-md bg-brand-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-700"
+          >
+            <FileText className="h-4 w-4" />
+            PDF İndir
+          </button>
+        </div>
       </div>
 
       {/* === PDF Settings === */}
