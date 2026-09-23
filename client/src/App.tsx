@@ -34,6 +34,8 @@ const CatalogPdfSettings = lazy(() => import('./pages/admin/CatalogPdfSettings')
 
 // Faz 6: lazy-load viewer (public, no auth)
 const Viewer = lazy(() => import('./pages/Viewer'));
+// Faz 9.6: public share viewer (token-based, no auth)
+const PublicShareViewer = lazy(() => import('./pages/PublicShareViewer'));
 
 const PageLoader = () => (
   <div className="flex min-h-[400px] items-center justify-center">
@@ -77,6 +79,16 @@ const App = () => {
           element={
             <Suspense fallback={<PageLoader />}>
               <Viewer />
+            </Suspense>
+          }
+        />
+
+        {/* Public Share Viewer (Faz 9.6) — token-based, no auth */}
+        <Route
+          path="/viewer/share/:token"
+          element={
+            <Suspense fallback={<PageLoader />}>
+              <PublicShareViewer />
             </Suspense>
           }
         />
