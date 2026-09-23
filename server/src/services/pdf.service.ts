@@ -11,6 +11,7 @@ import {
   renderHeader,
   renderProductCards,
   renderFooter,
+  renderPageBackground,
 } from './pdfRender';
 
 /**
@@ -128,6 +129,13 @@ export const generateCatalogPdf = async (
   const finished = new Promise<Buffer>((resolve, reject) => {
     doc.on('end', () => resolve(Buffer.concat(chunks)));
     doc.on('error', (err) => reject(err));
+  });
+
+  // Faz 10.4: Her yeni sayfa basinda page background'u ciz.
+  // 'pageAdded' event pdfkit'in addPage() cagirildiginda tetiklenir.
+  // layout.colors.background + layout.pageBackgroundType solid/gradient.
+  doc.on('pageAdded', () => {
+    renderPageBackground(doc, layout);
   });
 
   const fontPath = resolveFontPath();

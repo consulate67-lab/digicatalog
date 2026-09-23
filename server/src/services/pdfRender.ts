@@ -37,6 +37,78 @@ const imageAspectHeight = (width: number, ratio: string): number => {
   }
 };
 
+/**
+ * Hex renkten RGB tuple cikar (#RRGGBB).
+ */
+const hexToRgb = (hex: string): [number, number, number] => {
+  const h = hex.replace('#', '');
+  return [
+    parseInt(h.substring(0, 2), 16),
+    parseInt(h.substring(2, 4), 16),
+    parseInt(h.substring(4, 6), 16),
+  ];
+};
+
+/**
+ * RGB tuple'i hex'e cevirir (#RRGGBB).
+ */
+const rgbToHex = (r: number, g: number, b: number): string => {
+  const to2 = (n: number): string => {
+    const v = Math.max(0, Math.min(255, Math.round(n)));
+    return v.toString(16).padStart(2, '0');
+  };
+  return `#${to2(r)}${to2(g)}${to2(b)}`;
+};
+
+/**
+ * Hex rengi darken/lighten et (RGB channel bazli).
+ * amount: -1..1 (negatif = darken, pozitif = lighten).
+ * amount=0.15 → %15 koyu lastir.
+ */
+const adjustBrightness = (hex: string, amount: number): string => {
+  const [r, g, b] = hexToRgb(hex);
+  const factor = 1 - amount;
+  return rgbToHex(r * factor, g * factor, b * factor);
+};
+
+/**
+ * Sayfa arka planini ciz (Faz 10.4).
+ * - 'solid' → tek renkli rect
+ * - 'gradient' → dikey 2-stop gradient (50 band, smooth interpolation)
+ *
+ * pdfkit built-in gradient destegi yok, bu yuzden N band ile
+ * manuel olarak ciziyoruz. 50 band smooth bir gecis icin yeterli.
+ */
+export const renderPageBackground = (doc: PDFKit.PDFDocument, layout: any): void => {
+  const bgType: 'solid' | 'gradient' = layout.pageBackgroundType ?? 'solid';
+  const bgColor: string = layout.colors.background;
+  const pageW = doc.page.width;
+  const pageH = doc.page.height;
+
+  if (bgType === 'solid') {
+    doc.fillColor(bgColor).rect(0, 0, pageW, pageH).fill();
+    return;
+  }
+
+  // Gradient: dikey 2-stop. Top: bgColor, bottom: %15 koyu lastirilmis.
+  const topColor = bgColor;
+  const bottomColor = adjustBrightness(bgColor, 0.15);
+  const [tr, tg, tb] = hexToRgb(topColor);
+  const [br, bg2, bb] = hexToRgb(bottomColor);
+  const BANDS = 50;
+  const bandH = pageH / BANDS;
+  for (let i = 0; i < BANDS; i++) {
+    const t = i / (BANDS - 1); // 0..1
+    const r = tr + (br - tr) * t;
+    const g = tg + (bg2 - tg) * t;
+    const b = tb + (bb - tb) * t;
+    doc
+      .fillColor(rgbToHex(r, g, b))
+      .rect(0, i * bandH, pageW, bandH + 1) // +1 overlap (anti-alias gap)
+      .fill();
+  }
+};
+
 const applyTextStyle = (
   doc: PDFKit.PDFDocument,
   layout: any,
@@ -71,7 +143,7 @@ export const renderCover = async (
   switch (style) {
     case 'minimal': {
       // Ortada baslik + description + count + timestamp
-      doc.fillColor(layout.colors.background).rect(0, 0, doc.page.width, doc.page.height).fill();
+      // Not: page background pageAdded listener ile cizildi (Faz 10.4)
       doc.fillColor(layout.colors.text);
       const titleText = settings?.customCoverTitle ?? detail.name;
       doc.fontSize(layout.typography.titleSize * 1.4).fillColor(layout.colors.primary)
@@ -91,7 +163,7 @@ export const renderCover = async (
     }
 
     case 'centered': {
-      doc.fillColor(layout.colors.background).rect(0, 0, doc.page.width, doc.page.height).fill();
+      // Not: page background pageAdded listener ile cizildi (Faz 10.4)
       // Ortada border box
       const boxW = pageW * 0.7;
       const boxH = pageH * 0.5;
@@ -145,7 +217,7 @@ export const renderCover = async (
 
     case 'magazine': {
       // Sol yari: text, sag yari: image (ilk urunun)
-      doc.fillColor(layout.colors.background).rect(0, 0, doc.page.width, doc.page.height).fill();
+      // Not: page background pageAdded listener ile cizildi (Faz 10.4)
       const halfW = doc.page.width / 2;
       // Sol text
       doc.fillColor(layout.colors.primary).fontSize(layout.typography.titleSize * 1.3)
