@@ -72,7 +72,7 @@ const main = async () => {
       console.error('Login response:', json);
       process.exit(1);
     }
-    token = json.data.accessToken;
+    token = json.tokens.accessToken;
     if (!token) {
       console.error('Token yok, login response:', json);
       process.exit(1);
