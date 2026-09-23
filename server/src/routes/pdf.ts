@@ -30,21 +30,30 @@ const selectedSchema = z.object({
   productIds: z.array(z.string().uuid()).min(1).max(500),
   includeCover: z.boolean().optional(),
   includeToc: z.boolean().optional(),
+  templateId: z.string().uuid().nullable().optional(),
+});
+
+const fullBodySchema = z.object({
+  includeCover: z.boolean().optional(),
+  includeToc: z.boolean().optional(),
+  templateId: z.string().uuid().nullable().optional(),
 });
 
 /**
  * POST /api/catalogs/:id/pdf/full
  * Tum katalog PDF'i indir (senkron).
+ * Body: { includeCover?, includeToc?, templateId? }
  * Response: application/pdf binary, Content-Disposition ile dosya adi
  */
 router.post('/catalogs/:id/pdf/full', async (req, res, next) => {
   try {
     if (!req.user) throw new HttpError(401, 'Kimlik doğrulama gerekli');
 
-    const { includeCover, includeToc } = req.body ?? {};
+    const input = fullBodySchema.parse(req.body ?? {});
     const buffer = await pdfService.generateCatalogPdf(req.user.tenantId, req.params.id, {
-      includeCover: includeCover !== false,
-      includeToc: includeToc !== false,
+      includeCover: input.includeCover !== false,
+      includeToc: input.includeToc !== false,
+      templateId: input.templateId ?? undefined,
     });
 
     const filename = `katalog-${Date.now()}.pdf`;
@@ -59,7 +68,7 @@ router.post('/catalogs/:id/pdf/full', async (req, res, next) => {
 
 /**
  * POST /api/catalogs/:id/pdf/selected
- * Body: { productIds: [...], includeCover?, includeToc? }
+ * Body: { productIds: [...], includeCover?, includeToc?, templateId? }
  * Secili urunlerle PDF.
  * Response: application/pdf binary
  */
@@ -72,6 +81,7 @@ router.post('/catalogs/:id/pdf/selected', async (req, res, next) => {
       productIds: input.productIds,
       includeCover: input.includeCover !== false,
       includeToc: input.includeToc !== false,
+      templateId: input.templateId ?? undefined,
     });
 
     const filename = `katalog-secimli-${Date.now()}.pdf`;
