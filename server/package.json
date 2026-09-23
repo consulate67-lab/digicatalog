@@ -15,6 +15,7 @@
     "db:seed-templates": "tsx scripts/seed-pdf-templates.ts",
     "smoke:templates": "node scripts/smoke-pdf-templates.mjs",
     "smoke:render": "node scripts/smoke-pdf-render.mjs",
+    "smoke:shares": "node scripts/smoke-shares.mjs",
     "deploy:helper": "node dist/scripts/deploy-helper.cjs",
     "test": "vitest run",
     "test:watch": "vitest"
