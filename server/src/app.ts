@@ -19,6 +19,8 @@ import catalogRouter from './routes/catalogs';
 import viewerRouter from './routes/viewer';
 import pdfRouter from './routes/pdf';
 import pdfTemplatesRouter from './routes/pdf-templates';
+import sharesRouter from './routes/shares';
+import publicShareRouter from './routes/public-share';
 
 /**
  * Express app factory. Tüm middleware + route registry burada.
@@ -132,12 +134,21 @@ export const createApp = (): Application => {
   // === Admin: PDF Templates CRUD (auth gerekli) ===
   app.use('/api/admin/pdf-templates', pdfTemplatesRouter);
 
+  // === Admin: Catalog Shares (POST/GET/DELETE) ===
+  app.use('/api/catalogs/:catalogId/shares', sharesRouter);
+
   // === Public viewer (no auth) ===
   // ONEMLI: pdfRouter'dan ONCE mount edilmeli. pdfRouter /api/*'a
   // global authMiddleware uyguladigi icin, sonra gelen viewer da
   // 401'le reddedilirdi. Viewer public oldugundan router disina
   // auth koyamiyoruz, bu yuzden mount sirasi onemli.
   app.use('/api/viewer', viewerRouter);
+
+  // === Public catalog share viewer (Faz 9.4.3) ===
+  // Token-based, no auth. viewer.ts ile ayni mount path ama
+  // ayri router (separation of concerns). Sirasi onemli degil
+  // cunku farkli path'ler (/share/:token vs /:id).
+  app.use('/api/viewer', publicShareRouter);
 
   app.use('/api', pdfRouter);
 
