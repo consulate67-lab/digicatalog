@@ -31,6 +31,8 @@ const Catalogs = lazy(() => import('./pages/admin/Catalogs'));
 const CatalogsNew = lazy(() => import('./pages/admin/CatalogsNew'));
 const CatalogsEdit = lazy(() => import('./pages/admin/CatalogsEdit'));
 const CatalogPdfSettings = lazy(() => import('./pages/admin/CatalogPdfSettings'));
+// Faz 9.8: PDF templates management
+const Templates = lazy(() => import('./pages/admin/Templates'));
 
 // Faz 6: lazy-load viewer (public, no auth)
 const Viewer = lazy(() => import('./pages/Viewer'));
@@ -187,6 +189,14 @@ const App = () => {
             element={
               <Suspense fallback={<PageLoader />}>
                 <Catalogs />
+              </Suspense>
+            }
+          />
+          <Route
+            path="templates"
+            element={
+              <Suspense fallback={<PageLoader />}>
+                <Templates />
               </Suspense>
             }
           />

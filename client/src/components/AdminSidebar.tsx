@@ -8,6 +8,7 @@ import {
   Users,
   Plug,
   BookOpenCheck,
+  Layers,
 } from 'lucide-react';
 
 /**
@@ -80,6 +81,10 @@ const AdminSidebar = () => {
         <NavLink to="/admin/catalogs" className={linkClass}>
           <BookOpenCheck className="h-4 w-4" />
           Kataloglar
+        </NavLink>
+        <NavLink to="/admin/templates" className={linkClass}>
+          <Layers className="h-4 w-4" />
+          PDF Şablonları
         </NavLink>
       </nav>
     </aside>
