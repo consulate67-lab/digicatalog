@@ -1,7 +1,17 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { BookOpen, ChevronLeft, ChevronRight, X, Loader2, ImageIcon } from 'lucide-react';
+import {
+  BookOpen,
+  ChevronLeft,
+  ChevronRight,
+  X,
+  Loader2,
+  ImageIcon,
+  FileText,
+  Eye,
+  Download,
+} from 'lucide-react';
 import api from '../lib/api';
 
 interface ViewerFieldConfig {
@@ -54,6 +64,14 @@ interface ViewerResponse {
   createdAt: string;
 }
 
+interface PdfTemplate {
+  id: string;
+  name: string;
+  slug: string;
+  category: string;
+  isSystem: boolean;
+}
+
 const isVisible = (cfg: ViewerFieldConfig[], name: string): boolean => {
   const f = cfg.find((c) => c.fieldName === name);
   return f ? f.isVisible : true;
@@ -68,8 +86,12 @@ const sortByVisibleOrder = (cfg: ViewerFieldConfig[]): ViewerFieldConfig[] =>
  * Auth gerektirmez, link-based paylaşım. Sadece 'active' kataloglar
  * görüntülenir (server tarafında 404).
  *
+ * Faz 9.7: PDF indir + preview butonları eklendi. Template seçici
+ * ile admin hangi template'i kullanacağını seçebilir (görsel karşılaştırma
+ * için).
+ *
  * Layout:
- * - Üst bar: katalog adı + açıklama + müşteri sayısı
+ * - Üst bar: katalog adı + açıklama + template seçici + PDF butonları
  * - Sol sidebar: kategori ağacı (chip'ler)
  * - Ana içerik: ürün grid (field config'e göre)
  * - Ürün tıklayınca modal: büyük resim + tüm özellikler + fiyat + notlar
@@ -78,10 +100,15 @@ const Viewer = () => {
   const { catalogId } = useParams<{ catalogId: string }>();
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
   const [selectedProduct, setSelectedProduct] = useState<ViewerProduct | null>(null);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
+  const [pdfDownloading, setPdfDownloading] = useState(false);
+  const [pdfError, setPdfError] = useState<string | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
 
   // Scroll lock when modal is open
   useEffect(() => {
-    if (selectedProduct) {
+    if (selectedProduct || previewOpen) {
       document.body.style.overflow = 'hidden';
     } else {
       document.body.style.overflow = '';
@@ -89,16 +116,33 @@ const Viewer = () => {
     return () => {
       document.body.style.overflow = '';
     };
-  }, [selectedProduct]);
+  }, [selectedProduct, previewOpen]);
 
   // Close modal on Escape
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && selectedProduct) setSelectedProduct(null);
+      if (e.key === 'Escape') {
+        if (selectedProduct) setSelectedProduct(null);
+        if (previewOpen) closePreview();
+      }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [selectedProduct]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedProduct, previewOpen]);
+
+  // Cleanup blob URL on unmount or when closing preview
+  const closePreview = () => {
+    if (previewUrl) {
+      URL.revokeObjectURL(previewUrl);
+      setPreviewUrl(null);
+    }
+    setPreviewOpen(false);
+  };
+
+  useEffect(() => () => {
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+  }, [previewUrl]);
 
   const viewerQuery = useQuery({
     queryKey: ['viewer', catalogId],
@@ -109,6 +153,36 @@ const Viewer = () => {
     enabled: !!catalogId,
     retry: false,
   });
+
+  // PDF templates listesi (Faz 9.7)
+  const templatesQuery = useQuery({
+    queryKey: ['pdf-templates-all'],
+    queryFn: async () => {
+      const res = await api.get<{ data: PdfTemplate[] }>(
+        `/admin/pdf-templates?pageSize=100`,
+      );
+      return res.data.data ?? [];
+    },
+  });
+
+  // Katalog için seçili template (catalog_pdf_settings'ten) — initial değer
+  const settingsQuery = useQuery({
+    queryKey: ['pdf-settings', catalogId],
+    queryFn: async () => {
+      const res = await api.get<{ data: { templateId: string } }>(
+        `/catalogs/${catalogId}/pdf-settings`,
+      );
+      return res.data.data;
+    },
+    enabled: !!catalogId,
+  });
+
+  // Initial templateId'i settings'ten al
+  useEffect(() => {
+    if (settingsQuery.data?.templateId && !selectedTemplateId) {
+      setSelectedTemplateId(settingsQuery.data.templateId);
+    }
+  }, [settingsQuery.data, selectedTemplateId]);
 
   // Visible fields (sıralı)
   const visibleFields = useMemo(
@@ -124,6 +198,66 @@ const Viewer = () => {
       (p) => p.category?.id === selectedCategoryId,
     );
   }, [viewerQuery.data, selectedCategoryId]);
+
+  // PDF indir — mevcut downloadCatalogPdf helper'i templateId desteklemiyor,
+  // bu yuzden inline axios kullaniyoruz.
+  const handleDownloadPdf = async () => {
+    if (!catalogId) return;
+    setPdfError(null);
+    setPdfDownloading(true);
+    try {
+      const response = await api.post(
+        `/catalogs/${catalogId}/pdf/full`,
+        { templateId: selectedTemplateId || null },
+        { responseType: 'blob', timeout: 60_000 },
+      );
+      const disposition = response.headers['content-disposition'] ?? '';
+      const match = disposition.match(/filename="?([^";]+)"?/);
+      const filename = match?.[1] ?? `katalog-${Date.now()}.pdf`;
+      const blob = response.data as Blob;
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => window.URL.revokeObjectURL(url), 100);
+    } catch (err) {
+      setPdfError(
+        (err as { response?: { data?: { message?: string } } })?.response?.data?.message ??
+        'PDF oluşturulamadı',
+      );
+    } finally {
+      setPdfDownloading(false);
+    }
+  };
+
+  // PDF önizle — blob URL al, modal iframe'de göster
+  const handlePreviewPdf = async () => {
+    if (!catalogId) return;
+    setPdfError(null);
+    setPdfDownloading(true);
+    try {
+      const response = await api.post(
+        `/catalogs/${catalogId}/pdf/full`,
+        { templateId: selectedTemplateId || null },
+        { responseType: 'blob', timeout: 60_000 },
+      );
+      const blob = response.data as Blob;
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+      const url = window.URL.createObjectURL(blob);
+      setPreviewUrl(url);
+      setPreviewOpen(true);
+    } catch (err) {
+      setPdfError(
+        (err as { response?: { data?: { message?: string } } })?.response?.data?.message ??
+        'PDF önizlenemedi',
+      );
+    } finally {
+      setPdfDownloading(false);
+    }
+  };
 
   if (viewerQuery.isLoading) {
     return (
@@ -149,6 +283,7 @@ const Viewer = () => {
   }
 
   const data = viewerQuery.data!;
+  const templates = templatesQuery.data ?? [];
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -164,6 +299,66 @@ const Viewer = () => {
               )}
               <p className="mt-2 text-xs text-slate-500">
                 {data.products.length} ürün · {data.customerCount} müşteri
+              </p>
+            </div>
+
+            {/* === PDF Actions (Faz 9.7) === */}
+            <div className="flex flex-shrink-0 flex-col items-end gap-2">
+              {pdfError && (
+                <p className="text-xs text-rose-600">{pdfError}</p>
+              )}
+              <div className="flex items-center gap-2">
+                <select
+                  value={selectedTemplateId}
+                  onChange={(e) => setSelectedTemplateId(e.target.value)}
+                  disabled={templatesQuery.isLoading}
+                  className="rounded-md border border-slate-300 px-2 py-1.5 text-xs focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                  title="PDF şablonu seç"
+                >
+                  {templatesQuery.isLoading ? (
+                    <option>Yükleniyor...</option>
+                  ) : templates.length === 0 ? (
+                    <option value="">Şablon yok</option>
+                  ) : (
+                    <>
+                      <option value="">Varsayılan</option>
+                      {templates.map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.isSystem ? '📐' : '✏️'} {t.name}
+                        </option>
+                      ))}
+                    </>
+                  )}
+                </select>
+                <button
+                  onClick={handlePreviewPdf}
+                  disabled={pdfDownloading || data.products.length === 0}
+                  className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                  title="PDF'i tarayıcıda önizle"
+                >
+                  {pdfDownloading ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Eye className="h-3.5 w-3.5" />
+                  )}
+                  Önizle
+                </button>
+                <button
+                  onClick={handleDownloadPdf}
+                  disabled={pdfDownloading || data.products.length === 0}
+                  className="inline-flex items-center gap-1.5 rounded-md bg-brand-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  title="PDF'i indir"
+                >
+                  {pdfDownloading ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Download className="h-3.5 w-3.5" />
+                  )}
+                  PDF İndir
+                </button>
+              </div>
+              <p className="text-[10px] text-slate-400">
+                {data.products.length === 0 ? 'Önce ürün ekleyin' : 'Seçili template ile oluşturulur'}
               </p>
             </div>
           </div>
@@ -232,13 +427,42 @@ const Viewer = () => {
         </main>
       </div>
 
-      {/* Modal */}
+      {/* Product Modal */}
       {selectedProduct && (
         <ProductModal
           product={selectedProduct}
           visibleFields={visibleFields}
           onClose={() => setSelectedProduct(null)}
         />
+      )}
+
+      {/* PDF Preview Modal (Faz 9.7) */}
+      {previewOpen && previewUrl && (
+        <div className="fixed inset-0 z-50 flex flex-col bg-black/80 p-4">
+          <div className="mb-3 flex items-center justify-between rounded-md bg-slate-900 px-4 py-2 text-white">
+            <span className="flex items-center gap-2 text-sm font-medium">
+              <FileText className="h-4 w-4" />
+              PDF Önizleme
+              {selectedTemplateId && templates.find((t) => t.id === selectedTemplateId) && (
+                <span className="text-xs text-slate-400">
+                  ({templates.find((t) => t.id === selectedTemplateId)?.name})
+                </span>
+              )}
+            </span>
+            <button
+              onClick={closePreview}
+              className="rounded-md bg-white/10 px-3 py-1 text-sm hover:bg-white/20"
+            >
+              <X className="h-4 w-4" />
+              <span className="sr-only">Kapat</span>
+            </button>
+          </div>
+          <iframe
+            src={previewUrl}
+            title="PDF Önizleme"
+            className="flex-1 rounded-md bg-white shadow-2xl"
+          />
+        </div>
       )}
     </div>
   );
