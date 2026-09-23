@@ -1,27 +1,30 @@
 import PDFDocument from 'pdfkit';
 import { promises as fs } from 'fs';
-import path from 'path';
 import { HttpError } from '../middleware/errorHandler';
 import { logger } from '../utils/logger';
 import { getCatalog } from './catalog.service';
 import { resolveTemplate } from './pdfTemplateResolver';
-import { resolvePageSize, resolveOrientation } from './pdfLayoutDefaults';
-import { upsertCatalogPdfSettings } from './catalogPdfSettings.service';
+import { getCatalogPdfSettings } from './catalogPdfSettings.service';
+import {
+  renderCover,
+  renderToc,
+  renderHeader,
+  renderProductCards,
+  renderFooter,
+} from './pdfRender';
 
 /**
- * PDF service — katalog PDF uretimi (pdfkit).
+ * PDF service orchestrator (Faz 9 Aşama 3.2).
  *
- * Faz 7 — Korgun ERP entegrasyonu sonrasi pdfkit implementasyonu.
- * Faz 9 — template-aware refactor (templateId opsiyonel).
+ * Onceki implementasyon (commit 323f6a2) hardcoded render
+ * logic iceriyordu. Refactor sonrasi bu dosya sadece:
+ *   1) Katalog detayini al
+ *   2) Template'i resolve et (DB'den veya default)
+ *   3) catalog_pdf_settings'i oku (field toggles)
+ *   4) PDF doc olustur + font yukle
+ *   5) renderCover/renderToc/renderProductCards/renderHeader/renderFooter cagir
  *
- * Endpoint'ler (server/src/routes/pdf.ts):
- * - POST /api/catalogs/:id/pdf/full       — tum katalog
- * - POST /api/catalogs/:id/pdf/selected   — secili urunler
- * - GET  /api/catalogs/:id/pdf/preview    — inline gosterim
- *
- * NOT: Turkce karakter icin Windows'ta C:\\Windows\\Fonts\\arial.ttf
- * kullanilir (tum Turkce karakter seti dahil). Linux'ta bulunamazsa
- * Helvetica fallback (Turkce karakterler bozuk gozukur ama sync calisir).
+ * Asıl render implementasyonu pdfRender.ts'te — varyantlar orada.
  */
 
 export interface CatalogPdfOptions {
@@ -30,20 +33,17 @@ export interface CatalogPdfOptions {
   includeToc?: boolean;
   /** Faz 9.3: template ID ile template-aware render. Yoksa default layout. */
   templateId?: string | null;
-  /** Faz 9.3: catalog_pdf_settings'ten field toggles (logo/tel/email/...). */
-  catalogSettings?: Awaited<ReturnType<typeof upsertCatalogPdfSettings>> | null;
 }
 
 /**
  * Platform'a gore Turkce karakter destekleyen font path'i.
- * Windows: arial (en genis Turkce destegi).
- * Linux/macOS: bulamazsa fallback (PDF'te Turkce karakter bozuk olabilir).
+ * Windows: arial. Linux/macOS: fallback Helvetica (Turkce bozuk olabilir).
  */
 const resolveFontPath = (): string | null => {
   if (process.platform === 'win32') {
     return 'C:\\Windows\\Fonts\\arial.ttf';
   }
-  return null; // Linux/macOS: fallback Helvetica (Turkce karakter bozuk)
+  return null;
 };
 
 export const generateCatalogPdf = async (
@@ -51,30 +51,23 @@ export const generateCatalogPdf = async (
   catalogId: string,
   options: CatalogPdfOptions = {},
 ): Promise<Buffer> => {
-  // 1) Katalog detayini al (items + fieldConfig)
+  // 1) Katalog detayini al
   const detail = await getCatalog(tenantId, catalogId);
   if (!detail) throw new HttpError(404, 'Katalog bulunamadi');
 
-  // 1b) Faz 9.3: Template resolution (templateId verilmisse DB'den oku, default'a dusur).
-  // Render logic Aşama 9.3.2'de tamamen template-aware olacak; burada sadece
-  // setup (page size, orientation, debug log).
+  // 2) Template resolution (Faz 9.3.1)
   const resolved = await resolveTemplate(tenantId, options.templateId);
-  logger.debug(
-    {
-      catalogId,
-      templateId: resolved.templateId,
-      templateSlug: resolved.templateSlug,
-      pageSize: resolved.layout.pageSize,
-      orientation: resolved.layout.orientation,
-    },
-    'PDF template resolved',
-  );
+  const layout = resolved.layout;
 
-  // 2) PDF dokumani olustur (Faz 9.3.1: page size + orientation template'den)
+  // 3) catalog_pdf_settings (field toggles: logo, telefon, email, ...)
+  //    Faz 9.3.3'te route tarafindan da inject edilebilir, ama su an default'a dusuyor
+  const settings = await getCatalogPdfSettings(tenantId, catalogId);
+
+  // 4) PDF doc + font
   const doc = new PDFDocument({
-    size: resolvePageSize(resolved.layout),
-    layout: resolveOrientation(resolved.layout) ? 'landscape' : 'portrait',
-    margin: 50, // Aşama 9.3.2'de resolved.layout.margin ile degistirilecek
+    size: layout.pageSize.toLowerCase() as any,
+    layout: layout.orientation === 'landscape' ? 'landscape' : 'portrait',
+    margin: layout.margin.top,
     info: {
       Title: detail.name,
       Author: 'DijiCatalog',
@@ -82,7 +75,6 @@ export const generateCatalogPdf = async (
     },
   });
 
-  // 3) Buffer'a topla (stream yakalama)
   const chunks: Buffer[] = [];
   doc.on('data', (c: Buffer) => chunks.push(c));
   const finished = new Promise<Buffer>((resolve, reject) => {
@@ -90,7 +82,6 @@ export const generateCatalogPdf = async (
     doc.on('error', (err) => reject(err));
   });
 
-  // 4) Font yukle (Turkce karakter icin onemli)
   const fontPath = resolveFontPath();
   if (fontPath) {
     try {
@@ -104,141 +95,57 @@ export const generateCatalogPdf = async (
     doc.font('Helvetica');
   }
 
-  // 5) Cover sayfasi
+  // 5) Cover (opsiyonel)
   if (options.includeCover !== false) {
-    doc.fontSize(28).text(detail.name, { align: 'center' });
-    doc.moveDown(0.5);
-    if (detail.description) {
-      doc.fontSize(12).fillColor('#475569').text(detail.description, { align: 'center' });
-    }
-    doc.moveDown(2);
-    doc.fontSize(14).fillColor('#0f172a').text(
-      `${detail.items.length} urun  -  ${detail.customers.length} musteri`,
-      { align: 'center' },
-    );
-    doc.moveDown(4);
-    doc.fontSize(10).fillColor('#94a3b8').text(
-      'DijiCatalog tarafindan olusturuldu  -  ' + new Date().toLocaleString('tr-TR'),
-      { align: 'center' },
-    );
-    doc.fillColor('#0f172a');
+    await renderCover(doc, layout, detail, settings);
   }
 
-  // 6) Secili urunler filtresi (productIds verilmisse)
+  // 6) Item filtreleme (productIds verilmisse)
   const filteredItems = options.productIds && options.productIds.length > 0
     ? detail.items.filter((i) => options.productIds!.includes(i.id))
     : detail.items;
 
-  // 7) Table of Contents (icerik)
-  if (options.includeToc !== false && filteredItems.length > 0) {
-    doc.addPage();
-    doc.fontSize(18).fillColor('#0f172a').text('Icindekiler', { align: 'center' });
-    doc.moveDown(1);
-    doc.fontSize(11).fillColor('#475569');
-    filteredItems.forEach((item, i) => {
-      const p = item.product;
-      const text = `${String(i + 1).padStart(2, '0')}  -  ${p.sku}  -  ${p.name}`;
-      doc.text(text);
-    });
-    doc.fillColor('#0f172a');
+  // 7) TOC (opsiyonel)
+  if (options.includeToc !== false) {
+    renderToc(doc, layout, filteredItems, detail);
   }
 
-  // 8) Her urun icin sayfa
-  for (let idx = 0; idx < filteredItems.length; idx++) {
-    const item = filteredItems[idx];
-    const p = item.product;
+  // 8) Product cards — header/footer her sayfa basinda/sonunda
+  //    Page tracking: renderProductCards kendi icinde addPage cagirir.
+  //    Total sayfa sayisi render sonrasi bufferedPageRange'ten okunur.
+  await renderProductCards(doc, layout, filteredItems, settings);
 
-    doc.addPage();
-
-    // 8a) Resim (varsa)
-    const primaryImg = p.primaryImage ?? null;
-    if (primaryImg?.base64Data) {
-      try {
-        const imgBuf = Buffer.from(primaryImg.base64Data, 'base64');
-        const pageW = doc.page.width - doc.page.margins.left - doc.page.margins.right;
-        doc.image(imgBuf, doc.page.margins.left, doc.page.margins.top, {
-          fit: [pageW, 280],
-          align: 'center',
-          valign: 'center',
-        });
-        doc.y = doc.page.margins.top + 300;
-      } catch (err) {
-        logger.warn({ sku: p.sku, err: (err as Error).message }, 'PDF image embed failed');
-        doc.y = doc.page.margins.top + 20;
-      }
-    } else {
-      doc.y = doc.page.margins.top + 20;
+  // 9) Footer'lari her sayfaya uygula (sayfa sayisi biliniyor)
+  const pageRange = doc.bufferedPageRange();
+  const totalPages = pageRange.count;
+  for (let i = 0; i < totalPages; i++) {
+    doc.switchToPage(pageRange.start + i);
+    // Cover ve TOC sayfalarinda footer gosterme (dokunus kalsin)
+    const pageNum = i + 1;
+    const isCover = options.includeCover !== false && pageNum === 1;
+    const isToc = options.includeToc !== false && pageNum === (options.includeCover !== false ? 2 : 1);
+    if (!isCover && !isToc) {
+      renderFooter(doc, layout, detail, settings, pageNum, totalPages);
     }
-
-    // 8b) Baslik + SKU
-    doc.fontSize(18).fillColor('#0f172a').text(p.name, { width: 500 });
-    doc.moveDown(0.3);
-    doc.fontSize(10).fillColor('#64748b').text(`SKU: ${p.sku}`);
-
-    if (p.category) {
-      doc.fontSize(10).fillColor('#475569').text(`Kategori: ${p.category.name}`);
-    }
-
-    doc.moveDown(0.5);
-
-    // 8c) Fiyat (customPrice varsa onu kullan)
-    const finalPrice = item.customPrice ?? p.price;
-    doc.fontSize(20).fillColor('#16a34a').text(
-      `${finalPrice.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} ${p.currency}`,
-    );
-    if (item.customPrice && item.customPrice !== p.price) {
-      doc.fontSize(9).fillColor('#94a3b8').text(`Liste: ${p.price.toLocaleString('tr-TR')} ${p.currency}`);
-    }
-
-    doc.moveDown(0.5);
-
-    // 8d) Aciklama
-    if (p.description) {
-      doc.fontSize(10).fillColor('#334155').text(p.description, { width: 500 });
-      doc.moveDown(0.5);
-    }
-
-    // 8e) Marka + Birim
-    if (p.brand) {
-      doc.fontSize(10).fillColor('#475569').text(`Marka: ${p.brand}`);
-    }
-    if (p.unit) {
-      doc.fontSize(10).fillColor('#475569').text(`Birim: ${p.unit}`);
-    }
-
-    // 8f) Musteri notu (catalog item.customNotes)
-    if (item.customNotes) {
-      doc.moveDown(0.5);
-      doc.fontSize(10).fillColor('#7c3aed').text(`Not: ${item.customNotes}`);
-    }
-
-    // 8g) Sayfa numarasi
-    doc.fontSize(8).fillColor('#cbd5e1').text(
-      `${idx + 1} / ${filteredItems.length}`,
-      doc.page.margins.left,
-      doc.page.height - 30,
-      { width: 500, align: 'center' },
-    );
   }
 
-  doc.fillColor('#0f172a');
+  doc.fillColor('#000000');
   doc.end();
   return finished;
 };
 
 /**
- * Tek urun PDF — Faz 7'de kullanilmadi, sadece stub.
- * generateCatalogPdf ile benzer mantik (tek sayfa).
+ * Tek urun PDF — henuz kullanilmiyor.
  */
 export const generateProductPdf = async (
-  tenantId: string,
-  productId: string,
+  _tenantId: string,
+  _productId: string,
 ): Promise<Buffer> => {
   throw new HttpError(501, 'generateProductPdf henuz implement edilmedi (kullanilmiyor)');
 };
 
 /**
- * PDF stream — henuz kullanilmadi. Inline preview ileride bunu kullanabilir.
+ * PDF stream — henuz kullanilmiyor.
  */
 export const generatePdfStream = async (
   _tenantId: string,
@@ -247,4 +154,4 @@ export const generatePdfStream = async (
   throw new HttpError(501, 'generatePdfStream henuz implement edilmedi (kullanilmiyor)');
 };
 
-logger.info('pdf.service.ts (pdfkit implementasyonu) yuklendi');
+logger.info('pdf.service.ts (template-aware orchestrator) yuklendi');
