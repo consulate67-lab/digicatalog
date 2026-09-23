@@ -83,6 +83,18 @@ const pdfSettingsSchema = z.object({
   customCoverTitle: z.string().max(200).nullable().optional(),
   customFooterText: z.string().max(2000).nullable().optional(),
   qrLinkUrl: z.string().max(500).url().nullable().optional(),
+  // Faz 10.2 — Layout overrides
+  productsPerPage: z.number().int().min(1).max(48).nullable().optional(),
+  pageBackgroundColor: z
+    .string()
+    .regex(/^#[0-9A-Fa-f]{6}$/, 'Geçersiz hex renk (#RRGGBB)')
+    .nullable()
+    .optional(),
+  pageBackgroundType: z.enum(['solid', 'gradient']).optional(),
+  coverStyle: z
+    .enum(['minimal', 'centered', 'full-image', 'magazine', 'gradient'])
+    .nullable()
+    .optional(),
 });
 
 // === Routes ===

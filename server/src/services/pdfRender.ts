@@ -324,28 +324,42 @@ export const renderProductCards = async (
   const aspect = layout.productCard.imageAspectRatio;
   const border = layout.productCard.borderStyle;
 
+  // Faz 10.2: productsPerPage override (catalog-level setting).
+  // Set edilmis ve cols'a tam bolunmuyorsa, son satir eksik kalabilir
+  // (kullanici kasitli olarak secti — render'a mudahale etmiyoruz).
+  const perPageOverride = layout.productsPerPageOverride as number | undefined;
+  const maxItemsPerPage = perPageOverride ?? Infinity;
+  let itemsOnCurrentPage = 0;
+
   const pageW = doc.page.width - doc.page.margins.left - doc.page.margins.right;
   const colGap = 12;
   const cellW = (pageW - colGap * (cols - 1)) / cols;
 
   for (let i = 0; i < items.length; i++) {
     const item = items[i];
-    const col = i % cols;
+    let col = i % cols;
     const x = doc.page.margins.left + col * (cellW + colGap);
-    // Yeni sayfa gerekiyor mu?
-    if (col === 0) {
-      // Yeni sayfa — header ekle
+
+    // Faz 10.2: productsPerPage override — sayfa basina max urun sayisi.
+    // Sayfa basinda degilsek ve limit asildiysa, satir sonu olmasa bile
+    // yeni sayfa acariz. Layout bozulmamasi icin col=0 muamelesi yapiyoruz.
+    const hitPerPageLimit = itemsOnCurrentPage >= maxItemsPerPage;
+    if (col === 0 || hitPerPageLimit) {
       doc.addPage();
       renderHeader(doc, layout, { name: '', id: '', tenantId: '', description: null, status: 'active',
         createdBy: null, createdAt: '', updatedAt: '', items: [], customers: [], fieldConfig: [] },
         settings);
       doc.y = doc.page.margins.top + 10;
+      itemsOnCurrentPage = 0;
+      col = 0; // yeni sayfada her zaman col=0
     }
 
     const startY = doc.y;
     const itemHeight = await renderOneProductCard(doc, layout, item, {
       x, y: startY, width: cellW, aspect, imagePos, showSku, showDesc, showCat, showBrand, showPrice, border,
     });
+
+    itemsOnCurrentPage++;
 
     // Cursor'u ilerlet
     if (col === cols - 1) {

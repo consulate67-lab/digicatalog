@@ -11,22 +11,22 @@ import {
   Loader2,
   FileText,
   Share2,
+  Layout as LayoutIcon,
+  Image as ImageIcon,
+  Palette,
 } from 'lucide-react';
 import api from '../../lib/api';
 
 /**
- * Catalog PDF Settings + Shares management (Faz 9.5).
+ * Catalog PDF Settings + Shares management (Faz 9.5 + Faz 10.2).
  *
  * URL: /admin/catalogs/:id/pdf-settings
  *
- * Iki bolum:
- * 1) PDF Settings: template secici (24 preset + custom), field toggles,
- *    custom cover title + footer text. PUT /api/catalogs/:id/pdf-settings.
- * 2) Shares: aktif share list, yeni share olustur (customer email +
- *    expiresInDays), URL kopyala, revoke.
- *
- * Not: Public viewer endpoint (GET /api/viewer/share/:token) 9.4.3'te
- * backend'de hazir — UI tarafindan URL olusturuluyor.
+ * Uc bolum:
+ * 1) Layout Editor (Faz 10.2): template secici + layout override'lari
+ *    (urun/sayfa, sayfa arka plan rengi + tipi, kapak stili override).
+ * 2) Field Toggles: iletisim bilgisi gorunurluk (logo, telefon, ...)
+ * 3) Shares: aktif share list, yeni share olustur, revoke.
  */
 
 interface PdfTemplate {
@@ -52,6 +52,11 @@ interface CatalogPdfSettings {
   customCoverTitle: string | null;
   customFooterText: string | null;
   qrLinkUrl: string | null;
+  // Layout overrides (Faz 10.2)
+  productsPerPage: number | null;
+  pageBackgroundColor: string | null;
+  pageBackgroundType: 'solid' | 'gradient';
+  coverStyle: string | null;
   updatedAt: string;
 }
 
@@ -65,6 +70,16 @@ interface CatalogShare {
   lastAccessedAt: string | null;
   accessCount: number;
 }
+
+// Faz 10.2 layout options (backend COVER_STYLE_OPTIONS ile ayni)
+const PRODUCTS_PER_PAGE_OPTIONS = [4, 6, 8, 12, 16, 24] as const;
+const COVER_STYLE_OPTIONS = [
+  { value: 'minimal', label: 'Minimal', icon: '▢', desc: 'Temiz, ortada baslik' },
+  { value: 'centered', label: 'Centered', icon: '⊡', desc: 'Cerceveli kutu' },
+  { value: 'full-image', label: 'Full Image', icon: '🖼', desc: 'Ilk urunun gorseli' },
+  { value: 'magazine', label: 'Magazine', icon: '⊟', desc: 'Sol text + sag image' },
+  { value: 'gradient', label: 'Gradient', icon: '◐', desc: 'Renk gecisli arka plan' },
+] as const;
 
 const FIELD_TOGGLES: Array<{
   key: keyof Pick<
@@ -151,6 +166,11 @@ const CatalogPdfSettings = () => {
       customCoverTitle: current.customCoverTitle,
       customFooterText: current.customFooterText,
       qrLinkUrl: current.qrLinkUrl,
+      // Faz 10.2 layout overrides
+      productsPerPage: current.productsPerPage,
+      pageBackgroundColor: current.pageBackgroundColor,
+      pageBackgroundType: current.pageBackgroundType,
+      coverStyle: current.coverStyle,
     });
   };
 
@@ -329,6 +349,139 @@ const CatalogPdfSettings = () => {
             placeholder="https://..."
             className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
           />
+        </div>
+
+        {/* === Layout Editor (Faz 10.2) === */}
+        <div className="mt-6 border-t border-slate-100 pt-5">
+          <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-900">
+            <LayoutIcon className="h-4 w-4 text-brand-600" />
+            Layout (Şablon Override)
+          </h3>
+          <p className="mb-4 text-xs text-slate-500">
+            Şablonun varsayılan layout'unu katalog bazında geçersiz kılın. Boş bırakılan alanlar şablonun orijinal değerini kullanır.
+          </p>
+
+          {/* Ürün / Sayfa */}
+          <div className="mb-4">
+            <label className="mb-1 flex items-center gap-2 text-sm font-medium text-slate-700">
+              <ImageIcon className="h-3.5 w-3.5 text-slate-400" />
+              Sayfa Başına Ürün Sayısı
+            </label>
+            <select
+              value={current.productsPerPage ?? ''}
+              onChange={(e) =>
+                setDraft({
+                  ...current,
+                  productsPerPage: e.target.value === '' ? null : Number(e.target.value),
+                })
+              }
+              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+            >
+              <option value="">Şablondan (varsayılan)</option>
+              {PRODUCTS_PER_PAGE_OPTIONS.map((n) => (
+                <option key={n} value={n}>
+                  {n} ürün / sayfa
+                </option>
+              ))}
+            </select>
+            <p className="mt-1 text-xs text-slate-500">
+              Şablonun kolon sayısını ve sayfa düzenini geçersiz kılar. Örn. 4 → büyük kartlar, 24 → küçük kartlar.
+            </p>
+          </div>
+
+          {/* Sayfa Arka Planı */}
+          <div className="mb-4">
+            <label className="mb-1 flex items-center gap-2 text-sm font-medium text-slate-700">
+              <Palette className="h-3.5 w-3.5 text-slate-400" />
+              Sayfa Arka Planı
+            </label>
+            <div className="flex items-center gap-3">
+              <input
+                type="color"
+                value={current.pageBackgroundColor ?? '#FFFFFF'}
+                onChange={(e) => setDraft({ ...current, pageBackgroundColor: e.target.value })}
+                className="h-10 w-14 cursor-pointer rounded-md border border-slate-300 bg-white p-0.5"
+                aria-label="Sayfa arka plan rengi"
+              />
+              <input
+                type="text"
+                value={current.pageBackgroundColor ?? ''}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  // Hex validasyonu (basit): #RRGGBB veya boş
+                  if (v === '' || /^#[0-9A-Fa-f]{6}$/.test(v)) {
+                    setDraft({ ...current, pageBackgroundColor: v === '' ? null : v });
+                  }
+                }}
+                placeholder="#FFFFFF (şablondan)"
+                maxLength={7}
+                className="w-32 rounded-md border border-slate-300 px-3 py-2 font-mono text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+              />
+              <button
+                type="button"
+                onClick={() => setDraft({ ...current, pageBackgroundColor: null })}
+                className="rounded-md border border-slate-200 px-2 py-1.5 text-xs text-slate-600 hover:bg-slate-50"
+              >
+                Temizle
+              </button>
+            </div>
+            <div className="mt-2 flex items-center gap-3 text-xs text-slate-600">
+              <span>Tip:</span>
+              {(['solid', 'gradient'] as const).map((t) => (
+                <label key={t} className="flex items-center gap-1.5">
+                  <input
+                    type="radio"
+                    name="bg-type"
+                    checked={current.pageBackgroundType === t}
+                    onChange={() => setDraft({ ...current, pageBackgroundType: t })}
+                    className="h-3.5 w-3.5 border-slate-300 text-brand-600 focus:ring-brand-500"
+                  />
+                  <span>{t === 'solid' ? 'Düz renk' : 'Gradient (basit)'}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          {/* Kapak Stili Override */}
+          <div className="mb-2">
+            <label className="mb-2 flex items-center gap-2 text-sm font-medium text-slate-700">
+              <FileText className="h-3.5 w-3.5 text-slate-400" />
+              Kapak Sayfası Stili
+            </label>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+              <button
+                type="button"
+                onClick={() => setDraft({ ...current, coverStyle: null })}
+                className={`flex flex-col items-center gap-1 rounded-md border px-2 py-2 text-xs transition-colors ${
+                  current.coverStyle === null
+                    ? 'border-brand-500 bg-brand-50 text-brand-700'
+                    : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                }`}
+              >
+                <span className="text-base">∅</span>
+                <span className="font-medium">Şablondan</span>
+              </button>
+              {COVER_STYLE_OPTIONS.map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => setDraft({ ...current, coverStyle: opt.value })}
+                  className={`flex flex-col items-center gap-1 rounded-md border px-2 py-2 text-xs transition-colors ${
+                    current.coverStyle === opt.value
+                      ? 'border-brand-500 bg-brand-50 text-brand-700'
+                      : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                  }`}
+                  title={opt.desc}
+                >
+                  <span className="text-base">{opt.icon}</span>
+                  <span className="font-medium">{opt.label}</span>
+                </button>
+              ))}
+            </div>
+            <p className="mt-2 text-xs text-slate-500">
+              Şablonun kapak stilini geçersiz kılar. Şablondan seçilirse şablonun orijinal cover.style kullanılır.
+            </p>
+          </div>
         </div>
       </section>
 

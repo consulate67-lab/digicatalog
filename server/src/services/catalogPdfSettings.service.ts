@@ -26,6 +26,11 @@ export interface CatalogPdfSettingsDTO {
   customCoverTitle: string | null;
   customFooterText: string | null;
   qrLinkUrl: string | null;
+  // Layout overrides (Faz 10.2)
+  productsPerPage: number | null;
+  pageBackgroundColor: string | null;
+  pageBackgroundType: 'solid' | 'gradient';
+  coverStyle: string | null;
   updatedAt: string;
 }
 
@@ -42,6 +47,11 @@ export interface CatalogPdfSettingsInput {
   customCoverTitle?: string | null;
   customFooterText?: string | null;
   qrLinkUrl?: string | null;
+  // Layout overrides (Faz 10.2)
+  productsPerPage?: number | null;
+  pageBackgroundColor?: string | null;
+  pageBackgroundType?: 'solid' | 'gradient';
+  coverStyle?: string | null;
 }
 
 // === Defaults (show_* true, custom_* null) ===
@@ -58,7 +68,28 @@ export const DEFAULT_PDF_SETTINGS = {
   customCoverTitle: null as string | null,
   customFooterText: null as string | null,
   qrLinkUrl: null as string | null,
+  // Layout override defaults (Faz 10.2)
+  productsPerPage: null as number | null,        // NULL = template'den gelir
+  pageBackgroundColor: null as string | null,    // NULL = template rengi (#FFFFFF)
+  pageBackgroundType: 'solid' as 'solid' | 'gradient',
+  coverStyle: null as string | null,             // NULL = template'in coverStyle'i
 };
+
+// === Layout override constraints (Faz 10.2) ===
+
+export const PRODUCTS_PER_PAGE_OPTIONS = [4, 6, 8, 12, 16, 24] as const;
+export const COVER_STYLE_OPTIONS = [
+  'minimal',
+  'centered',
+  'full-image',
+  'magazine',
+  'gradient',
+] as const;
+export type CoverStyleOption = (typeof COVER_STYLE_OPTIONS)[number];
+
+/** Hex renk validasyonu (#RRGGBB). */
+export const isValidHexColor = (s: string): boolean =>
+  /^#[0-9A-Fa-f]{6}$/.test(s);
 
 // === Get ===
 
@@ -89,7 +120,11 @@ export const getCatalogPdfSettings = async (
             show_website AS showWebsite, show_qr_code AS showQrCode,
             custom_cover_title AS customCoverTitle,
             custom_footer_text AS customFooterText,
-            qr_link_url AS qrLinkUrl, updated_at AS updatedAt
+            qr_link_url AS qrLinkUrl, updated_at AS updatedAt,
+            products_per_page AS productsPerPage,
+            page_background_color AS pageBackgroundColor,
+            page_background_type AS pageBackgroundType,
+            cover_style_override AS coverStyle
      FROM catalog_pdf_settings WHERE catalog_id = @catalogId`);
   if (r.recordset[0]) {
     const x = r.recordset[0];
@@ -107,6 +142,10 @@ export const getCatalogPdfSettings = async (
       customCoverTitle: x.customCoverTitle,
       customFooterText: x.customFooterText,
       qrLinkUrl: x.qrLinkUrl,
+      productsPerPage: x.productsPerPage,
+      pageBackgroundColor: x.pageBackgroundColor,
+      pageBackgroundType: (x.pageBackgroundType ?? 'solid') as 'solid' | 'gradient',
+      coverStyle: x.coverStyle,
       updatedAt: x.updatedAt.toISOString(),
     };
   }
@@ -130,6 +169,10 @@ export const getCatalogPdfSettings = async (
     customCoverTitle: null,
     customFooterText: null,
     qrLinkUrl: null,
+    productsPerPage: null,
+    pageBackgroundColor: null,
+    pageBackgroundType: 'solid',
+    coverStyle: null,
     updatedAt: new Date().toISOString(),
   };
 };
@@ -174,6 +217,10 @@ export const upsertCatalogPdfSettings = async (
     .input('customCoverTitle', sql.NVarChar, input.customCoverTitle ?? null)
     .input('customFooterText', sql.NVarChar, input.customFooterText ?? null)
     .input('qrLinkUrl', sql.NVarChar, input.qrLinkUrl ?? null)
+    .input('productsPerPage', sql.Int, input.productsPerPage ?? null)
+    .input('pageBackgroundColor', sql.VarChar, input.pageBackgroundColor ?? null)
+    .input('pageBackgroundType', sql.VarChar, input.pageBackgroundType ?? DEFAULT_PDF_SETTINGS.pageBackgroundType)
+    .input('coverStyle', sql.VarChar, input.coverStyle ?? null)
     .query(`IF EXISTS (SELECT 1 FROM catalog_pdf_settings WHERE catalog_id = @catalogId)
             BEGIN
               UPDATE catalog_pdf_settings
@@ -185,6 +232,10 @@ export const upsertCatalogPdfSettings = async (
                   custom_cover_title = @customCoverTitle,
                   custom_footer_text = @customFooterText,
                   qr_link_url = @qrLinkUrl,
+                  products_per_page = @productsPerPage,
+                  page_background_color = @pageBackgroundColor,
+                  page_background_type = @pageBackgroundType,
+                  cover_style_override = @coverStyle,
                   updated_at = getdate()
               WHERE catalog_id = @catalogId
             END
@@ -193,11 +244,13 @@ export const upsertCatalogPdfSettings = async (
               INSERT INTO catalog_pdf_settings
                 (catalog_id, template_id, show_logo, show_phone, show_email, show_address,
                  show_instagram, show_facebook, show_website, show_qr_code,
-                 custom_cover_title, custom_footer_text, qr_link_url)
+                 custom_cover_title, custom_footer_text, qr_link_url,
+                 products_per_page, page_background_color, page_background_type, cover_style_override)
               VALUES
                 (@catalogId, @templateId, @showLogo, @showPhone, @showEmail, @showAddress,
                  @showInstagram, @showFacebook, @showWebsite, @showQrCode,
-                 @customCoverTitle, @customFooterText, @qrLinkUrl)
+                 @customCoverTitle, @customFooterText, @qrLinkUrl,
+                 @productsPerPage, @pageBackgroundColor, @pageBackgroundType, @coverStyle)
             END`);
 
   const fresh = await getCatalogPdfSettings(tenantId, catalogId);

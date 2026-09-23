@@ -20,9 +20,10 @@ import {
  * logic iceriyordu. Refactor sonrasi bu dosya sadece:
  *   1) Katalog detayini al
  *   2) Template'i resolve et (DB'den veya default)
- *   3) catalog_pdf_settings'i oku (field toggles)
- *   4) PDF doc olustur + font yukle
- *   5) renderCover/renderToc/renderProductCards/renderHeader/renderFooter cagir
+ *   3) catalog_pdf_settings'i oku (field toggles + layout overrides)
+ *   4) Layout override'larini uygula (Faz 10.2)
+ *   5) PDF doc olustur + font yukle
+ *   6) renderCover/renderToc/renderProductCards/renderHeader/renderFooter cagir
  *
  * Asıl render implementasyonu pdfRender.ts'te — varyantlar orada.
  */
@@ -46,6 +47,51 @@ const resolveFontPath = (): string | null => {
   return null;
 };
 
+/**
+ * Catalog-level layout override'larini template layout'una uygula (Faz 10.2).
+ *
+ * Override semantigi:
+ *   - productsPerPage: NULL ise template'in columns × satirlar hesabi kullanilir
+ *     (renderProductCards zaten columns × rows mantiginda calisiyor — render
+ *     tarafinda 'override' varsa o kullanilir)
+ *   - pageBackgroundColor: NULL ise template'in colors.background kullanilir
+ *   - pageBackgroundType: 'solid' | 'gradient' (gradient henuz implement edilmedi,
+ *     sadece 'solid' aktif)
+ *   - coverStyle: NULL ise template'in cover.style kullanilir; degilse override
+ *
+ * Layout mutation (deep merge) — orijinal template'i etkilemez, kopyaya uygular.
+ */
+const applyLayoutOverrides = (
+  baseLayout: any,
+  settings: import('./catalogPdfSettings.service').CatalogPdfSettingsDTO | null,
+): any => {
+  if (!settings) return baseLayout;
+  const layout = JSON.parse(JSON.stringify(baseLayout)); // deep clone
+
+  if (settings.pageBackgroundColor) {
+    layout.colors = {
+      ...layout.colors,
+      background: settings.pageBackgroundColor,
+    };
+    // Gradient tipinde secondary de ayarla (basit 2 renkli gradient icin)
+    if (settings.pageBackgroundType === 'gradient') {
+      layout.colors.backgroundSecondary = layout.colors.background;
+      layout.colors.background = settings.pageBackgroundColor;
+    }
+  }
+
+  if (settings.coverStyle) {
+    layout.cover = { ...layout.cover, style: settings.coverStyle };
+  }
+
+  if (settings.productsPerPage) {
+    // renderProductCards bu alani okur; max urun/sayfa olarak kullanilir
+    layout.productsPerPageOverride = settings.productsPerPage;
+  }
+
+  return layout;
+};
+
 export const generateCatalogPdf = async (
   tenantId: string,
   catalogId: string,
@@ -57,11 +103,13 @@ export const generateCatalogPdf = async (
 
   // 2) Template resolution (Faz 9.3.1)
   const resolved = await resolveTemplate(tenantId, options.templateId);
-  const layout = resolved.layout;
+  const templateLayout = resolved.layout;
 
-  // 3) catalog_pdf_settings (field toggles: logo, telefon, email, ...)
-  //    Faz 9.3.3'te route tarafindan da inject edilebilir, ama su an default'a dusuyor
+  // 3) catalog_pdf_settings (field toggles + layout overrides)
   const settings = await getCatalogPdfSettings(tenantId, catalogId);
+
+  // 4) Layout override'larini uygula (Faz 10.2)
+  const layout = applyLayoutOverrides(templateLayout, settings);
 
   // 4) PDF doc + font
   const doc = new PDFDocument({
