@@ -124,7 +124,9 @@ export const listCatalogs = async (
 
   const totalR = await pool.request()
     .input('tenantId', sql.UniqueIdentifier, tenantId)
-    .query(`SELECT COUNT(*) AS total FROM catalogs c WHERE ${where.replace(/@(\w+)/g, '@$1')}`);
+    .input('status', sql.NVarChar, options.status ?? null)
+    .input('search', sql.NVarChar, options.search ? `%${options.search.toLowerCase()}%` : '')
+    .query(`SELECT COUNT(*) AS total FROM catalogs c WHERE ${where}`);
   const total = totalR.recordset[0]?.total ?? 0;
 
   const items: CatalogSummaryDTO[] = itemsR.recordset.map((c) => ({
