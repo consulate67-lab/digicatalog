@@ -10,6 +10,7 @@ import {
   Users,
   Package,
   FileDown,
+  Settings,
   Loader2,
 } from 'lucide-react';
 import api from '../../lib/api';
@@ -228,6 +229,13 @@ const Catalogs = () => {
                       >
                         <Edit className="h-4 w-4" />
                       </button>
+                      <Link
+                        to={`/admin/catalogs/${c.id}/pdf-settings`}
+                        className="rounded p-1.5 text-slate-500 hover:bg-brand-50 hover:text-brand-700"
+                        title="PDF Ayarları ve Paylaşım"
+                      >
+                        <Settings className="h-4 w-4" />
+                      </Link>
                       <button
                         onClick={() => handleDelete(c)}
                         className="rounded p-1.5 text-slate-500 hover:bg-rose-50 hover:text-rose-600"

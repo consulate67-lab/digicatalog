@@ -30,6 +30,7 @@ const Integrations = lazy(() => import('./pages/admin/Integrations'));
 const Catalogs = lazy(() => import('./pages/admin/Catalogs'));
 const CatalogsNew = lazy(() => import('./pages/admin/CatalogsNew'));
 const CatalogsEdit = lazy(() => import('./pages/admin/CatalogsEdit'));
+const CatalogPdfSettings = lazy(() => import('./pages/admin/CatalogPdfSettings'));
 
 // Faz 6: lazy-load viewer (public, no auth)
 const Viewer = lazy(() => import('./pages/Viewer'));
@@ -190,6 +191,14 @@ const App = () => {
             element={
               <Suspense fallback={<PageLoader />}>
                 <CatalogsEdit />
+              </Suspense>
+            }
+          />
+          <Route
+            path="catalogs/:id/pdf-settings"
+            element={
+              <Suspense fallback={<PageLoader />}>
+                <CatalogPdfSettings />
               </Suspense>
             }
           />
