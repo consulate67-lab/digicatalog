@@ -87,8 +87,8 @@ const main = async () => {
       console.error(json);
       process.exit(1);
     }
-    const total = json.total;
-    const items = json.items || [];
+    const total = json.pagination?.total;
+    const items = json.data || [];
     const categories = [...new Set(items.map((i) => i.category))].sort();
     log(`   list total >= 24 (preset'ler seed edilmis)`, total >= 24, `total=${total}`);
     log(`   8 kategori mevcut`, categories.length === 8, `categories=${categories.join(',')}`);
