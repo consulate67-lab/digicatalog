@@ -35,6 +35,25 @@ const envSchema = z.object({
     .transform((s) => s.split(',').map((o) => o.trim()).filter(Boolean)),
 
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
+
+  // === Public app URL (share emails, QR kodlar) ===
+  // Frontend base URL. Share linkleri bu URL uzerinden uretilir:
+  //   ${PUBLIC_APP_URL}/viewer/share/:token
+  // Dev default: http://localhost:5173
+  // Prod (Korgun): https://catalog.korgun.local (ornek)
+  PUBLIC_APP_URL: z.string().url().default('http://localhost:5173'),
+
+  // === SMTP (Faz 10.1 — share email MVP) ===
+  // Tum alanlar opsiyonel: bos ise email.service dev modunda
+  // console.log'a dusur (log-only fallback). Production'da gercek
+  // SMTP bilgileri ile doldurulmali.
+  SMTP_HOST: z.string().default(''),
+  SMTP_PORT: z.coerce.number().int().positive().optional(),
+  SMTP_USER: z.string().default(''),
+  SMTP_PASS: z.string().default(''),
+  SMTP_FROM: z.string().default('DijiCatalog <noreply@digicatalog.local>'),
+  // TLS zorunlu mu? Gmail/Office365 evet, localhost mock SMTP hayir.
+  SMTP_SECURE: z.coerce.boolean().default(false),
 });
 
 const parsed = envSchema.safeParse(process.env);

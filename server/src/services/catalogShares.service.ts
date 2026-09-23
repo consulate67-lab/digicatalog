@@ -3,6 +3,8 @@ import crypto from 'crypto';
 import { getPool } from '../config/database';
 import { HttpError } from '../middleware/errorHandler';
 import { logger } from '../utils/logger';
+import { env } from '../config/env';
+import * as emailService from './email.service';
 
 /**
  * Catalog Shares service (Faz 9.4.1).
@@ -80,11 +82,13 @@ export const createShare = async (
   const pool = await getPool();
 
   // Katalog var mi ve tenant'a mi ait?
+  // Ayni zamanda catalog adini cek (email template icin lazim).
   const ex = await pool.request()
     .input('tenantId', sql.UniqueIdentifier, tenantId)
     .input('catalogId', sql.UniqueIdentifier, catalogId)
-    .query(`SELECT id FROM catalogs WHERE id = @catalogId AND tenant_id = @tenantId`);
+    .query(`SELECT id, name FROM catalogs WHERE id = @catalogId AND tenant_id = @tenantId`);
   if (!ex.recordset[0]) throw new HttpError(404, 'Katalog bulunamadi');
+  const catalogName: string = ex.recordset[0].name;
 
   // Token benzersiz olsun (cok nadir collision, ama kontrol edelim)
   let token = generateAccessToken();
@@ -120,6 +124,30 @@ export const createShare = async (
     { shareId: id, catalogId, customerEmail: input.customerEmail, expiresAt, expiresInDays: input.expiresInDays },
     'Catalog share olusturuldu',
   );
+
+  // === Best-effort: share link email'i musteriye gonder ===
+  // Hata olursa share basarisiz OLMAZ, sadece log'lanir. Admin
+  // share URL'i zaten API response'da goruyor, email sadece bonus.
+  const shareUrl = `${env.PUBLIC_APP_URL.replace(/\/$/, '')}/viewer/share/${token}`;
+  emailService
+    .sendShareLink({
+      to: input.customerEmail,
+      catalogName,
+      shareUrl,
+      expiresAt,
+    })
+    .then((result) => {
+      logger.info(
+        { shareId: id, mode: result.mode, delivered: result.delivered, messageId: result.messageId },
+        'Share link email sonucu',
+      );
+    })
+    .catch((err) => {
+      logger.error(
+        { shareId: id, err: err?.message ?? String(err), customerEmail: input.customerEmail },
+        'Share link email gonderilemedi (best-effort, share gecerli)',
+      );
+    });
 
   return {
     id,
