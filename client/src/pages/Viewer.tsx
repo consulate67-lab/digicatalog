@@ -154,23 +154,24 @@ const Viewer = () => {
     retry: false,
   });
 
-  // PDF templates listesi (Faz 9.7)
+  // PDF templates listesi — public endpoint (Faz 9.9 — auth'sız)
+  // viewer.tsx public oldugu icin admin endpoint'i kullanamaz (401).
   const templatesQuery = useQuery({
-    queryKey: ['pdf-templates-all'],
+    queryKey: ['pdf-templates-public'],
     queryFn: async () => {
       const res = await api.get<{ data: PdfTemplate[] }>(
-        `/admin/pdf-templates?pageSize=100`,
+        `/public/templates`,
       );
       return res.data.data ?? [];
     },
   });
 
-  // Katalog için seçili template (catalog_pdf_settings'ten) — initial değer
+  // Katalog için seçili template — public endpoint (Faz 9.9 — auth'sız)
   const settingsQuery = useQuery({
-    queryKey: ['pdf-settings', catalogId],
+    queryKey: ['public-pdf-settings', catalogId],
     queryFn: async () => {
       const res = await api.get<{ data: { templateId: string } }>(
-        `/catalogs/${catalogId}/pdf-settings`,
+        `/public/catalogs/${catalogId}/pdf-settings`,
       );
       return res.data.data;
     },

@@ -21,6 +21,8 @@ import pdfRouter from './routes/pdf';
 import pdfTemplatesRouter from './routes/pdf-templates';
 import sharesRouter from './routes/shares';
 import publicShareRouter from './routes/public-share';
+import publicTemplatesRouter from './routes/public-templates';
+import publicSettingsRouter from './routes/public-settings';
 
 /**
  * Express app factory. Tüm middleware + route registry burada.
@@ -149,6 +151,16 @@ export const createApp = (): Application => {
   // ayri router (separation of concerns). Sirasi onemli degil
   // cunku farkli path'ler (/share/:token vs /:id).
   app.use('/api/viewer', publicShareRouter);
+
+  // === Public PDF Templates (Faz 9.9) ===
+  // Sadece sistem preset sablonlari, no auth. viewer.ts kullanir
+  // (public viewer'da template dropdown icin).
+  app.use('/api/public/templates', publicTemplatesRouter);
+
+  // === Public Catalog PDF Settings (Faz 9.9) ===
+  // viewer.ts icin catalog'un PDF settings'ini doner. Custom footer
+  // text ve QR URL HARIC (sadece public-facing alanlar).
+  app.use('/api/public/catalogs/:catalogId/pdf-settings', publicSettingsRouter);
 
   app.use('/api', pdfRouter);
 
