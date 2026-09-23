@@ -4,6 +4,10 @@ import { authMiddleware } from '../middleware/auth';
 import * as catalogService from '../services/catalog.service';
 import { HttpError } from '../middleware/errorHandler';
 import { paginated } from '../utils/pagination';
+import {
+  getCatalogPdfSettings,
+  upsertCatalogPdfSettings,
+} from '../services/catalogPdfSettings.service';
 
 // Catalog field izinli degerler (services/catalog.service.ts'te de tanimli,
 // Drizzle schema trash'e tasindi, burada local tutuyoruz)
@@ -62,6 +66,23 @@ const filterQuerySchema = z.object({
   priceMax: z.coerce.number().nonnegative().optional(),
   excludeInCatalog: z.enum(['true', 'false']).optional(),
   limit: z.coerce.number().int().min(1).max(2000).optional(),
+});
+
+// === PDF Settings (Faz 9.3.3) ===
+
+const pdfSettingsSchema = z.object({
+  templateId: z.string().uuid(),
+  showLogo: z.boolean().optional(),
+  showPhone: z.boolean().optional(),
+  showEmail: z.boolean().optional(),
+  showAddress: z.boolean().optional(),
+  showInstagram: z.boolean().optional(),
+  showFacebook: z.boolean().optional(),
+  showWebsite: z.boolean().optional(),
+  showQrCode: z.boolean().optional(),
+  customCoverTitle: z.string().max(200).nullable().optional(),
+  customFooterText: z.string().max(2000).nullable().optional(),
+  qrLinkUrl: z.string().max(500).url().nullable().optional(),
 });
 
 // === Routes ===
@@ -256,6 +277,42 @@ router.get('/:id/filter', async (req, res, next) => {
       },
     );
     res.json({ data: products });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// === PDF Settings (Faz 9.3.3) ===
+
+/**
+ * GET /api/catalogs/:id/pdf-settings
+ * Katalog PDF ayarlarini oku (template id + field toggles).
+ * Settings yoksa default + fallback template ile doner.
+ * 404 sadece katalog yoksa.
+ */
+router.get('/:id/pdf-settings', async (req, res, next) => {
+  try {
+    if (!req.user) throw new HttpError(401, 'Kimlik doğrulama gerekli');
+    const settings = await getCatalogPdfSettings(req.user.tenantId, req.params.id);
+    if (!settings) throw new HttpError(404, 'Katalog bulunamadi');
+    res.json({ data: settings });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * PUT /api/catalogs/:id/pdf-settings
+ * Upsert: varsa update, yoksa insert.
+ * Body: { templateId, showLogo?, showPhone?, ..., customCoverTitle?, customFooterText?, qrLinkUrl? }
+ * templateId zorunlu (Zod).
+ */
+router.put('/:id/pdf-settings', async (req, res, next) => {
+  try {
+    if (!req.user) throw new HttpError(401, 'Kimlik doğrulama gerekli');
+    const input = pdfSettingsSchema.parse(req.body);
+    const settings = await upsertCatalogPdfSettings(req.user.tenantId, req.params.id, input);
+    res.json({ data: settings });
   } catch (err) {
     next(err);
   }
