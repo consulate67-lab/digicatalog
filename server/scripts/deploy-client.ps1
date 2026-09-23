@@ -35,17 +35,22 @@ Write-Host "=== 3. dist/ -> server/public/ kopyala ===" -ForegroundColor Cyan
 $distDir = "C:\digicatalog\client\dist"
 $publicDir = "C:\digicatalog\server\public"
 
+# Korunacak dosyalar (Faz E.2.1 — IIS reverse proxy config)
+# web.config: IIS rewrite rules + proxy config. Deploy sirasinda silinirse
+# reverse proxy bozulur (Faz E.2). Bunu asla ezme/uzerine yazma.
+$preserveFiles = @('web.config')
+
 if (-not (Test-Path $distDir)) { throw "dist/ bulunamadi: $distDir" }
 
-# public dizinini temizle (eski asset'leri sil)
+# public dizinini temizle (eski asset'leri sil), preserveFiles HARIC
 if (Test-Path $publicDir) {
-    Write-Host "Eski public/ temizleniyor..." -ForegroundColor Yellow
-    Get-ChildItem -Path $publicDir -Force | Where-Object { -not $_.PSIsContainer -or $_.Name -notin @(".") } | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+    Write-Host "Eski public/ temizleniyor (web.config korunur)..." -ForegroundColor Yellow
+    Get-ChildItem -Path $publicDir -Force | Where-Object { $_.Name -notin $preserveFiles } | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
 } else {
     New-Item -ItemType Directory -Path $publicDir -Force | Out-Null
 }
 
-# Yeni build'i kopyala
+# Yeni build'i kopyala (web.config source'ta yok, dolayisiyla korunur)
 Write-Host "Yeni build kopyalaniyor..." -ForegroundColor Yellow
 Copy-Item -Path "$distDir\*" -Destination $publicDir -Recurse -Force
 Copy-Item -Path "$distDir\.*" -Destination $publicDir -Force -ErrorAction SilentlyContinue  # hidden files (.htaccess etc)
